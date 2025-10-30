@@ -290,7 +290,7 @@ This is a bounty submission. For improvements:
 
 MIT License - feel free to use and modify!
 
-## 🌟 What Makes This Brilliant
+## 🌟 what we tried to accomplish 
 
 1. **Simple but Powerful**: Clean API, complex math hidden
 2. **Real Data**: No mock data - actual CoinGecko prices
