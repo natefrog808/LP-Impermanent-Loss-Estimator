@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createAgentApp } from "@lucid-dreams/agent-kit";
+import { serve } from "@hono/node-server";
 
 const { app, addEntrypoint } = createAgentApp({
   name: "lp-impermanent-loss-estimator",
@@ -290,5 +291,19 @@ addEntrypoint({
     };
   },
 });
+
+// Start the server
+const port = parseInt(process.env.PORT || "3000");
+
+console.log(`🚀 Starting LP Impermanent Loss Estimator...`);
+console.log(`📊 Port: ${port}`);
+console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || 'Not configured'}`);
+
+serve({
+  fetch: app.fetch,
+  port: port,
+});
+
+console.log(`✅ Server running on http://0.0.0.0:${port}`);
 
 export default app;
