@@ -5,12 +5,13 @@
   "type": "module",
   "main": "index.ts",
   "scripts": {
-    "dev": "agent-kit serve index.ts --watch",
-    "start": "agent-kit serve index.ts",
+    "dev": "tsx watch index.ts",
+    "start": "NODE_ENV=production tsx index.ts",
     "build": "tsc"
   },
   "dependencies": {
     "@lucid-dreams/agent-kit": "latest",
+    "@hono/node-server": "^1.12.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
