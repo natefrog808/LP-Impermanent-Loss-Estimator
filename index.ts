@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createAgentApp } from "@lucid-dreams/agent-kit";
+import { serve } from "@hono/node-server";
 
 const { app, addEntrypoint } = createAgentApp({
   name: "lp-impermanent-loss-estimator",
@@ -289,6 +290,39 @@ addEntrypoint({
       usage: { total_tokens: String(input.text ?? "").length },
     };
   },
+});
+
+// Serve the application
+const port = Number(process.env.PORT) || 3000;
+
+console.log("🚀 Starting LP Impermanent Loss Estimator...");
+console.log(`📊 Port: ${port}`);
+console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || 'Not configured'}`);
+
+// Start server - this blocks and keeps the process alive
+serve(
+  {
+    fetch: app.fetch,
+    port,
+    hostname: "0.0.0.0",
+  },
+  (info) => {
+    console.log(`✅ Server running on http://${info.address}:${info.port}`);
+    console.log("📡 Endpoints:");
+    console.log("   POST /calculate_il - Calculate impermanent loss");
+    console.log("   POST /echo - Echo test");
+  }
+);
+
+// Handle shutdown gracefully
+process.on("SIGTERM", () => {
+  console.log("⏸️  SIGTERM received, shutting down gracefully...");
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  console.log("⏸️  SIGINT received, shutting down gracefully...");
+  process.exit(0);
 });
 
 export default app;
