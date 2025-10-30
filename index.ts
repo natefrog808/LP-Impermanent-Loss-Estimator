@@ -294,16 +294,21 @@ addEntrypoint({
 
 // Start the server
 const port = parseInt(process.env.PORT || "3000");
+const hostname = "0.0.0.0";
 
 console.log(`🚀 Starting LP Impermanent Loss Estimator...`);
 console.log(`📊 Port: ${port}`);
 console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || 'Not configured'}`);
 
-serve({
-  fetch: app.fetch,
-  port: port,
-});
-
-console.log(`✅ Server running on http://0.0.0.0:${port}`);
+serve(
+  {
+    fetch: app.fetch,
+    port: port,
+    hostname: hostname,
+  },
+  (info) => {
+    console.log(`✅ Server running on http://${info.address}:${info.port}`);
+  }
+);
 
 export default app;
