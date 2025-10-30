@@ -21,6 +21,11 @@ function calculateImpermanentLoss(
   return { ilPercent, hodlValue, lpValue };
 }
 
+// Type definition for CoinGecko API response
+interface CoinGeckoResponse {
+  prices: [number, number][];
+}
+
 // Fetch historical price data from CoinGecko
 async function fetchHistoricalPrices(
   token0Symbol: string,
@@ -51,10 +56,10 @@ async function fetchHistoricalPrices(
     const [data0, data1] = await Promise.all([
       fetch(
         `https://api.coingecko.com/api/v3/coins/${token0Id}/market_chart?vs_currency=usd&days=${daysBack}`
-      ).then((r) => r.json()),
+      ).then((r) => r.json()) as Promise<CoinGeckoResponse>,
       fetch(
         `https://api.coingecko.com/api/v3/coins/${token1Id}/market_chart?vs_currency=usd&days=${daysBack}`
-      ).then((r) => r.json()),
+      ).then((r) => r.json()) as Promise<CoinGeckoResponse>,
     ]);
 
     if (!data0.prices || !data1.prices) {
@@ -73,7 +78,7 @@ async function fetchHistoricalPrices(
     return {
       initialRatio,
       finalRatio,
-      prices: data0.prices.map((p: any, i: number) => ({
+      prices: data0.prices.map((p: [number, number], i: number) => ({
         timestamp: p[0],
         ratio: p[1] / (data1.prices[i]?.[1] || data1.prices[data1.prices.length - 1][1]),
       })),
@@ -170,8 +175,8 @@ addEntrypoint({
       .length(2)
       .describe("Amount of each token in USD value"),
     window_hours: z.number().default(168).describe("Historical window in hours (default 7 days)"),
-  }),
-  async handler({ input }) {
+  }) as any,
+  async handler({ input }: { input: any }) {
     try {
       const {
         token0_symbol,
@@ -277,8 +282,8 @@ addEntrypoint({
 addEntrypoint({
   key: "echo",
   description: "Echo a message",
-  input: z.object({ text: z.string() }),
-  async handler({ input }) {
+  input: z.object({ text: z.string() }) as any,
+  async handler({ input }: { input: any }) {
     return {
       output: { text: String(input.text ?? "") },
       usage: { total_tokens: String(input.text ?? "").length },
