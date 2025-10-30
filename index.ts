@@ -5,6 +5,9 @@ const { app, addEntrypoint } = createAgentApp({
   name: "lp-impermanent-loss-estimator",
   version: "0.1.0",
   description: "Calculate IL and fee APR for any LP position or simulated deposit",
+  x402: {
+    paymentAddress: "0xe7A413d4192fdee1bB5ecdF9D07A1827Eb15Bc1F",
+  },
 });
 
 // Core IL calculation for constant product AMM (x * y = k)
