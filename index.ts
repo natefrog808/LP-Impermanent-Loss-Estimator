@@ -291,12 +291,4 @@ addEntrypoint({
   },
 });
 
-// Start the server when this file is run directly
-const port = parseInt(process.env.PORT || "3000");
-console.log(`🚀 Starting LP Impermanent Loss Estimator...`);
-console.log(`📊 Port: ${port}`);
-console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || 'Not configured'}`);
-
-app.listen(port, "0.0.0.0");
-
 export default app;
