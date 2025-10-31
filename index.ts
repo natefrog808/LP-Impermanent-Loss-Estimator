@@ -97,10 +97,10 @@ async function fetchTokenPrices(
   ]);
 
   const [t0c, t1c, t0h, t1h] = await Promise.all([
-    token0Current.json(),
-    token1Current.json(),
-    token0Historical.json(),
-    token1Historical.json(),
+    token0Current.json() as Promise<any>,
+    token1Current.json() as Promise<any>,
+    token0Historical.json() as Promise<any>,
+    token1Historical.json() as Promise<any>,
   ]);
 
   return {
@@ -205,7 +205,6 @@ const app = createAgentApp({
   name: 'LP Impermanent Loss Estimator',
   description: 'Calculate impermanent loss and fee APR for liquidity provider positions using real historical price data',
   version: '1.0.0',
-  author: 'DeganAI',
   paymentsConfig: FACILITATOR_URL && WALLET_ADDRESS ? {
     facilitatorUrl: FACILITATOR_URL,
     address: WALLET_ADDRESS as `0x${string}`,
@@ -216,13 +215,16 @@ const app = createAgentApp({
 
 console.log('[STARTUP] Agent app created ✓');
 
+// Access the underlying Hono app for custom routes
+const honoApp = app.app;
+
 // ============================================
 // STEP 4: Define Entrypoints
 // ============================================
 console.log('[STARTUP] Step 4: Defining entrypoints...');
 
-// Health check endpoint
-app.get('/health', (c) => {
+// Health check endpoint (using Hono app directly)
+honoApp.get('/health', (c) => {
   console.log('[HEALTH] Health check requested');
   return c.json({ 
     status: 'ok', 
@@ -238,35 +240,17 @@ app.addEntrypoint({
   name: 'Calculate Impermanent Loss',
   description: 'Calculates impermanent loss and fee APR for a liquidity provider position using historical price data from CoinGecko',
   price: '$0.10',
-  input: z.object({
-    token0Symbol: z.string().describe('First token symbol (e.g., ETH, BTC, USDC)'),
-    token1Symbol: z.string().describe('Second token symbol (e.g., USDC, USDT, DAI)'),
-    token0Amount: z.number().positive().describe('Amount of first token in the pool'),
-    token1Amount: z.number().positive().describe('Amount of second token in the pool'),
-    daysHeld: z.number().positive().describe('Number of days the position has been held'),
-  }),
-  output: z.object({
-    token0Symbol: z.string(),
-    token1Symbol: z.string(),
-    initialValue: z.number(),
-    currentValue: z.number(),
-    hodlValue: z.number(),
-    impermanentLoss: z.number(),
-    impermanentLossPercent: z.number(),
-    estimatedFeeAPR: z.number(),
-    estimatedFeesEarned: z.number(),
-    netProfitLoss: z.number(),
-    netProfitLossPercent: z.number(),
-    recommendation: z.string(),
-    priceChange: z.object({
-      token0: z.number(),
-      token1: z.number(),
-      ratio: z.number(),
-    }),
-  }),
   handler: async (ctx) => {
     console.log('[HANDLER] calculate-il called');
-    const input = ctx.req.valid('json');
+    
+    // Parse input from context
+    const input = ctx.input as {
+      token0Symbol: string;
+      token1Symbol: string;
+      token0Amount: number;
+      token1Amount: number;
+      daysHeld: number;
+    };
     
     const position: PoolPosition = {
       ...input,
@@ -282,7 +266,7 @@ app.addEntrypoint({
     const result = calculateImpermanentLoss(position, prices);
     console.log('[HANDLER] Calculation complete:', result);
     
-    return ctx.json(result);
+    return result;
   },
 });
 
@@ -296,7 +280,7 @@ console.log('[STARTUP] Step 5: Starting server with Node.js...');
 import { serve } from '@hono/node-server';
 
 const server = serve({
-  fetch: app.fetch,
+  fetch: honoApp.fetch,
   port: PORT,
   hostname: HOST,
 }, (info) => {
