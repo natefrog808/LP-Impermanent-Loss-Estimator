@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch index.ts",
-    "start": "NODE_ENV=production node --loader tsx index.ts",
+    "start": "NODE_ENV=production node --import tsx index.ts",
     "build": "tsc",
     "preview": "node dist/index.js"
   },
