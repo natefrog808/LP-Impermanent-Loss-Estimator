@@ -1,317 +1,163 @@
-// Crypto polyfill for Node.js environments (if needed)
-import { webcrypto } from 'node:crypto';
-if (!globalThis.crypto) {
-  // @ts-ignore
-  globalThis.crypto = webcrypto;
-}
+// TEST VERSION - WITHOUT AGENT-KIT
+// Use this to see if agent-kit is causing the SIGTERM
 
-console.log("📦 Step 1: Starting imports...");
-import { z } from "zod";
-console.log("✅ Step 1a: zod imported");
-import { createAgentApp } from "@lucid-dreams/agent-kit";
-console.log("✅ Step 1b: agent-kit imported");
 import { serve } from "@hono/node-server";
-console.log("✅ Step 1c: hono/node-server imported");
+import { Hono } from "hono";
+import { z } from "zod";
 
-console.log("📦 Step 2: Creating agent app...");
-const { app, addEntrypoint } = createAgentApp({
-  name: "lp-impermanent-loss-estimator",
-  version: "0.1.0",
-  description: "Calculate IL and fee APR for any LP position or simulated deposit. Pricing: FREE for health/echo, $0.01 USDC per IL calculation.",
-});
-console.log("✅ Step 2: Agent app created");
+console.log("🧪 TEST MODE: Running without @lucid-dreams/agent-kit");
+console.log(`Node: ${process.version}`);
+console.log(`CWD: ${process.cwd()}`);
 
-// Core IL calculation for constant product AMM (x * y = k)
-function calculateImpermanentLoss(
-  priceRatio: number
-): { ilPercent: number; hodlValue: number; lpValue: number } {
+const app = new Hono();
+
+// Core IL calculation
+function calculateImpermanentLoss(priceRatio: number) {
   const sqrtRatio = Math.sqrt(priceRatio);
   const lpValue = (2 * sqrtRatio) / (1 + priceRatio);
-  const hodlValue = 1;
-  const ilPercent = (lpValue - hodlValue) * 100;
-  return { ilPercent, hodlValue, lpValue };
+  const ilPercent = (lpValue - 1) * 100;
+  return { ilPercent, lpValue };
 }
 
-console.log("📦 Step 3: Adding health endpoint...");
-addEntrypoint({
-  key: "health",
-  description: "Health check endpoint - verify service is running (FREE)",
-  input: z.object({}).optional() as any,
-  async handler() {
-    return {
-      output: { 
-        status: "healthy",
-        timestamp: Date.now(),
-        version: "0.1.0",
-        uptime: process.uptime(),
-        pricing: "FREE"
-      },
-      usage: { total_tokens: 10 },
-    };
-  },
+// Health endpoint - BOTH GET AND POST
+app.get("/health", (c) => {
+  return c.json({ 
+    status: "healthy", 
+    timestamp: Date.now(),
+    version: "test-without-agent-kit",
+    method: "GET"
+  });
 });
-console.log("✅ Step 3: Health endpoint added");
 
-interface CoinGeckoResponse {
-  prices: [number, number][];
-}
+app.post("/health", (c) => {
+  return c.json({ 
+    status: "healthy", 
+    timestamp: Date.now(),
+    version: "test-without-agent-kit",
+    method: "POST"
+  });
+});
 
-async function fetchHistoricalPrices(
-  token0Symbol: string,
-  token1Symbol: string,
-  daysBack: number
-): Promise<{ initialRatio: number; finalRatio: number; prices: any[] }> {
-  const coinGeckoIds: Record<string, string> = {
-    ETH: "ethereum", WETH: "ethereum", BTC: "bitcoin", WBTC: "wrapped-bitcoin",
-    USDC: "usd-coin", USDT: "tether", DAI: "dai", MATIC: "matic-network",
-    LINK: "chainlink", UNI: "uniswap", AAVE: "aave", CRV: "curve-dao-token", BAL: "balancer",
-  };
+// Echo endpoint
+app.post("/echo", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  return c.json({ 
+    echo: body,
+    timestamp: Date.now() 
+  });
+});
 
-  const token0Id = coinGeckoIds[token0Symbol.toUpperCase()] || token0Symbol.toLowerCase();
-  const token1Id = coinGeckoIds[token1Symbol.toUpperCase()] || token1Symbol.toLowerCase();
-
+// Calculate IL endpoint
+app.post("/calculate_il", async (c) => {
   try {
-    const [data0, data1] = await Promise.all([
-      fetch(`https://api.coingecko.com/api/v3/coins/${token0Id}/market_chart?vs_currency=usd&days=${daysBack}`).then((r) => r.json()) as Promise<CoinGeckoResponse>,
-      fetch(`https://api.coingecko.com/api/v3/coins/${token1Id}/market_chart?vs_currency=usd&days=${daysBack}`).then((r) => r.json()) as Promise<CoinGeckoResponse>,
-    ]);
-
-    if (!data0.prices || !data1.prices) {
-      throw new Error("Failed to fetch price data");
-    }
-
-    const initialPrice0 = data0.prices[0][1];
-    const initialPrice1 = data1.prices[0][1];
-    const finalPrice0 = data0.prices[data0.prices.length - 1][1];
-    const finalPrice1 = data1.prices[data1.prices.length - 1][1];
-
-    const initialRatio = initialPrice0 / initialPrice1;
-    const finalRatio = finalPrice0 / finalPrice1;
-
-    return {
-      initialRatio,
-      finalRatio,
-      prices: data0.prices.map((p: [number, number], i: number) => ({
-        timestamp: p[0],
-        ratio: p[1] / (data1.prices[i]?.[1] || data1.prices[data1.prices.length - 1][1]),
-      })),
-    };
+    const body = await c.req.json();
+    
+    // Simple test calculation
+    const priceRatio = 1.1; // Simulate 10% price change
+    const result = calculateImpermanentLoss(priceRatio);
+    
+    return c.json({
+      success: true,
+      test_mode: true,
+      message: "This is a test response - agent-kit disabled",
+      IL_percent: result.ilPercent.toFixed(4),
+      price_change: "10%",
+      input_received: body,
+    });
   } catch (error) {
-    throw new Error(`Failed to fetch prices: ${error}`);
+    return c.json({ 
+      error: String(error),
+      test_mode: true 
+    }, 500);
   }
-}
-
-function estimateFeeAPR(dailyVolume: number, tvl: number, feeTier: number = 0.003): number {
-  if (tvl === 0) return 0;
-  const annualFees = dailyVolume * feeTier * 365;
-  const apr = (annualFees / tvl) * 100;
-  return apr;
-}
-
-function estimatePoolMetrics(
-  token0: string,
-  token1: string,
-  depositValue: number
-): { estimatedTVL: number; estimatedDailyVolume: number; feeTier: number } {
-  const poolTypes: Record<string, { volumeRatio: number; feeTier: number }> = {
-    stablecoin: { volumeRatio: 0.5, feeTier: 0.0005 },
-    eth_stablecoin: { volumeRatio: 1.2, feeTier: 0.003 },
-    eth_btc: { volumeRatio: 0.8, feeTier: 0.003 },
-    major_major: { volumeRatio: 0.6, feeTier: 0.003 },
-    major_stable: { volumeRatio: 0.7, feeTier: 0.003 },
-    default: { volumeRatio: 0.3, feeTier: 0.003 },
-  };
-
-  const stablecoins = ["USDC", "USDT", "DAI"];
-  const majorTokens = ["ETH", "WETH", "BTC", "WBTC", "MATIC", "LINK", "UNI", "AAVE"];
-  let poolType = "default";
-
-  if (stablecoins.includes(token0) && stablecoins.includes(token1)) {
-    poolType = "stablecoin";
-  } else if ((["ETH", "WETH"].includes(token0) && stablecoins.includes(token1)) || (["ETH", "WETH"].includes(token1) && stablecoins.includes(token0))) {
-    poolType = "eth_stablecoin";
-  } else if ((["ETH", "WETH"].includes(token0) && ["BTC", "WBTC"].includes(token1)) || (["ETH", "WETH"].includes(token1) && ["BTC", "WBTC"].includes(token0))) {
-    poolType = "eth_btc";
-  } else if (majorTokens.includes(token0) && majorTokens.includes(token1)) {
-    poolType = "major_major";
-  } else if ((majorTokens.includes(token0) && stablecoins.includes(token1)) || (majorTokens.includes(token1) && stablecoins.includes(token0))) {
-    poolType = "major_stable";
-  }
-
-  const { volumeRatio, feeTier } = poolTypes[poolType];
-  const estimatedTVL = depositValue * 1000;
-  const estimatedDailyVolume = estimatedTVL * volumeRatio;
-  return { estimatedTVL, estimatedDailyVolume, feeTier };
-}
-
-console.log("📦 Step 4: Adding calculate_il endpoint...");
-addEntrypoint({
-  key: "calculate_il",
-  description: "Calculate impermanent loss and fee APR for LP position with historical price data. Cost: $0.01 USDC via X402 on Base network.",
-  input: z.object({
-    pool_address: z.string().optional().describe("LP pool address (optional)"),
-    token0_symbol: z.string().describe("First token symbol (e.g., ETH, USDC)"),
-    token1_symbol: z.string().describe("Second token symbol (e.g., USDT, DAI)"),
-    token_weights: z.array(z.number()).length(2).default([0.5, 0.5]).describe("Token weight distribution (default 50/50)"),
-    deposit_amounts: z.array(z.number()).length(2).describe("Amount of each token in USD value"),
-    window_hours: z.number().default(168).describe("Historical window in hours (default 7 days)"),
-  }) as any,
-  async handler({ input }: { input: any }) {
-    try {
-      const { token0_symbol, token1_symbol, deposit_amounts, window_hours } = input;
-      const daysBack = Math.ceil(window_hours / 24);
-      const priceData = await fetchHistoricalPrices(token0_symbol, token1_symbol, daysBack);
-      const priceRatio = priceData.finalRatio / priceData.initialRatio;
-      const ilResult = calculateImpermanentLoss(priceRatio);
-      const totalDepositValue = deposit_amounts[0] + deposit_amounts[1];
-      const poolMetrics = estimatePoolMetrics(token0_symbol, token1_symbol, totalDepositValue);
-      const feeAPR = estimateFeeAPR(poolMetrics.estimatedDailyVolume, poolMetrics.estimatedTVL, poolMetrics.feeTier);
-      const ilAnnualized = ilResult.ilPercent * (365 / daysBack);
-      const netAPR = feeAPR + ilAnnualized;
-      const notes = [];
-      if (Math.abs(ilResult.ilPercent) < 1) notes.push("Low impermanent loss - price ratio remained stable");
-      else if (Math.abs(ilResult.ilPercent) > 10) notes.push("⚠️ High impermanent loss - significant price divergence detected");
-      if (feeAPR > Math.abs(ilAnnualized)) notes.push("✅ Fee income exceeds annualized IL - profitable position");
-      else notes.push("⚠️ IL may exceed fee income - consider rebalancing");
-      notes.push(`Price ratio changed by ${((priceRatio - 1) * 100).toFixed(2)}% over the period`);
-      notes.push(`Pool type: ${token0_symbol}/${token1_symbol} with ${(poolMetrics.feeTier * 100).toFixed(2)}% fee tier`);
-      const volumeWindow = poolMetrics.estimatedDailyVolume * daysBack;
-
-      return {
-        output: {
-          pricing_note: "This calculation costs $0.01 USDC (paid via X402 protocol on Base network)",
-          IL_percent: Number(ilResult.ilPercent.toFixed(4)),
-          fee_apr_est: Number(feeAPR.toFixed(2)),
-          net_apr_est: Number(netAPR.toFixed(2)),
-          volume_window: Number(volumeWindow.toFixed(2)),
-          price_change_percent: Number(((priceRatio - 1) * 100).toFixed(2)),
-          il_annualized_percent: Number(ilAnnualized.toFixed(2)),
-          estimated_tvl: Number(poolMetrics.estimatedTVL.toFixed(2)),
-          estimated_daily_volume: Number(poolMetrics.estimatedDailyVolume.toFixed(2)),
-          fee_tier_percent: Number((poolMetrics.feeTier * 100).toFixed(3)),
-          notes: notes,
-        },
-        usage: { total_tokens: JSON.stringify(input).length + JSON.stringify(notes).length },
-      };
-    } catch (error) {
-      return {
-        output: {
-          error: `Failed to calculate IL: ${error}`,
-          IL_percent: 0,
-          fee_apr_est: 0,
-          volume_window: 0,
-          notes: ["Error occurred during calculation"],
-        },
-        usage: { total_tokens: 100 },
-      };
-    }
-  },
 });
-console.log("✅ Step 4: calculate_il endpoint added");
 
-console.log("📦 Step 5: Adding echo endpoint...");
-addEntrypoint({
-  key: "echo",
-  description: "Echo a message back - useful for testing the API (FREE)",
-  input: z.object({ text: z.string().describe("Text to echo back") }) as any,
-  async handler({ input }: { input: any }) {
-    return {
-      output: { text: String(input.text ?? ""), timestamp: Date.now(), pricing: "FREE" },
-      usage: { total_tokens: String(input.text ?? "").length },
-    };
-  },
+// Root endpoint
+app.get("/", (c) => {
+  return c.json({
+    name: "LP Impermanent Loss Estimator (TEST MODE)",
+    version: "test-without-agent-kit",
+    status: "running",
+    endpoints: {
+      "GET /health": "Health check",
+      "POST /health": "Health check (POST)",
+      "POST /echo": "Echo test",
+      "POST /calculate_il": "Calculate IL (test mode)",
+    },
+  });
 });
-console.log("✅ Step 5: echo endpoint added");
 
-console.log("📦 Step 6: Configuring server...");
 const port = Number(process.env.PORT) || 3000;
 const hostname = "0.0.0.0";
 
 console.log("==============================================");
-console.log("🚀 LP Impermanent Loss Estimator");
+console.log("🧪 LP IL Estimator - TEST MODE");
 console.log("==============================================");
-console.log(`📊 Port: ${port}`);
-console.log(`🌐 Hostname: ${hostname}`);
-console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || '0xe7A413d4192fdee1bB5ecdF9D07A1827Eb15Bc1F'}`);
-console.log(`🔧 Node Environment: ${process.env.NODE_ENV || 'development'}`);
-console.log(`📍 Working Directory: ${process.cwd()}`);
-console.log(`🔢 Node Version: ${process.version}`);
+console.log(`Port: ${port}`);
+console.log(`Hostname: ${hostname}`);
+console.log("Mode: WITHOUT @lucid-dreams/agent-kit");
 console.log("----------------------------------------------");
-console.log("💵 Pricing:");
-console.log("   /health - FREE");
-console.log("   /echo - FREE");
-console.log("   /calculate_il - $0.01 USDC per call (Base network)");
-console.log("----------------------------------------------");
-console.log("⏳ Starting server...");
-console.log("📦 Step 7: Calling serve() function...");
+console.log("Starting server...");
 
 try {
   const server = serve(
-    { fetch: app.fetch, port: port, hostname: hostname },
+    {
+      fetch: app.fetch,
+      port: port,
+      hostname: hostname,
+    },
     (info) => {
-      console.log("🎉🎉🎉 SUCCESS! SERVER IS NOW LISTENING! 🎉🎉🎉");
-      console.log("✅ SERVER IS READY AND LISTENING");
-      console.log(`🌍 Server URL: http://${hostname}:${info.port}`);
-      console.log("----------------------------------------------");
-      console.log("📡 Available Endpoints:");
-      console.log("   POST /health - Health check (FREE)");
-      console.log("   POST /calculate_il - Calculate IL ($0.01 USDC)");
-      console.log("   POST /echo - Echo test (FREE)");
+      console.log("✅ ✅ ✅ SERVER STARTED SUCCESSFULLY ✅ ✅ ✅");
+      console.log(`URL: http://${hostname}:${info.port}`);
+      console.log("Endpoints:");
+      console.log("  GET  /           - Info");
+      console.log("  GET  /health     - Health (GET)");
+      console.log("  POST /health     - Health (POST)");
+      console.log("  POST /echo       - Echo");
+      console.log("  POST /calculate_il - Calculate (test)");
       console.log("==============================================");
-      console.log("🔄 Server is stable and waiting for requests...");
+      console.log("Waiting for requests...");
     }
   );
-  
-  console.log("✅ Step 7: serve() function called successfully");
-  console.log("⏳ Waiting for server to bind to port...");
 
-  // Keep process alive with interval
+  // Keepalive
   const keepAlive = setInterval(() => {
-    // Log every 60 seconds to show server is still running
-    console.log(`⏰ Server uptime: ${Math.floor(process.uptime())} seconds`);
-  }, 60000);
+    console.log(`⏰ Uptime: ${Math.floor(process.uptime())}s`);
+  }, 30000);
 
   // Graceful shutdown
-  let isShuttingDown = false;
-  
+  let shuttingDown = false;
   const shutdown = (signal: string) => {
-    if (isShuttingDown) return;
-    isShuttingDown = true;
-    
-    console.log(`\n⏸️  ${signal} received, shutting down gracefully...`);
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`\n⏸️ ${signal} - shutting down...`);
     clearInterval(keepAlive);
-    
     server.close(() => {
-      console.log("✅ Server closed successfully");
+      console.log("✅ Shutdown complete");
       process.exit(0);
     });
-    
-    // Force exit after 10 seconds
-    setTimeout(() => {
-      console.error("⚠️  Forced shutdown after timeout");
-      process.exit(1);
-    }, 10000);
+    setTimeout(() => process.exit(1), 10000);
   };
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
   
-  // Catch unhandled errors
-  process.on('uncaughtException', (error) => {
+  process.on("uncaughtException", (err) => {
     console.error("💥 UNCAUGHT EXCEPTION:");
-    console.error(error);
-    shutdown("UNCAUGHT_EXCEPTION");
+    console.error(err);
+    shutdown("EXCEPTION");
   });
   
-  process.on('unhandledRejection', (reason, promise) => {
+  process.on("unhandledRejection", (reason) => {
     console.error("💥 UNHANDLED REJECTION:");
-    console.error('Promise:', promise);
-    console.error('Reason:', reason);
-    // Don't exit on unhandled rejection, just log it
+    console.error(reason);
   });
 
+  console.log("✅ Event handlers registered");
+  console.log("✅ Server initialization complete");
+
 } catch (error) {
-  console.error("❌ FATAL ERROR STARTING SERVER:");
+  console.error("❌ FATAL ERROR:");
   console.error(error);
   process.exit(1);
 }
