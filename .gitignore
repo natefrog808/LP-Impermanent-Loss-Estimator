@@ -1,26 +1,21 @@
-# Node
-node_modules/
-npm-debug.log*
-.npm
-
-# Build outputs
-dist/
-build/
-*.tsbuildinfo
-
-# Environment
-.env
-.env.local
-
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Temporarily ignore lock file to force regeneration
-package-lock.json
+{
+  "name": "lp-impermanent-loss-estimator",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch index.ts",
+    "start": "NODE_ENV=production node --import tsx index.ts"
+  },
+  "dependencies": {
+    "@lucid-dreams/agent-kit": "^0.2.22",
+    "@hono/node-server": "^1.12.0",
+    "hono": "^4.0.0",
+    "zod": "^3.22.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0",
+    "@types/node": "^20.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
