@@ -220,7 +220,7 @@ MIT
 - **Program:** Daydreams Agent Bounties
 - **Issue:** [#7 - Build an Agent](https://github.com/daydreamsai/agent-bounties/issues/7)
 - **Submission Date:** October 31, 2025
-- **Developer:** DeganAI
+- **Developer:** Natefrog808
 
 ## 🔗 Links
 
