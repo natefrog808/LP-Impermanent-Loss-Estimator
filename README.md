@@ -1,303 +1,234 @@
-# LP Impermanent Loss Estimator
+# LP Impermanent Loss Estimator 🔄
 
-A tool for calculating impermanent loss and fee APR for liquidity provider positions across major AMMs.
+An AI agent that calculates impermanent loss and fee APR for liquidity provider positions using real historical price data from CoinGecko.
 
-## 🎯 Features
+**🌐 Live Demo:** `https://lp-impermanent-loss-estimator-production.up.railway.app`
 
-- **Accurate IL Calculations** - Uses proven constant product AMM formulas
-- **Real Historical Data** - Fetches actual price data from CoinGecko
-- **Fee APR Estimation** - Intelligent volume/TVL modeling for different pool types
-- **Multi-Token Support** - Works with major tokens (ETH, BTC, USDC, USDT, DAI, etc.)
-- **Net Profitability Analysis** - Compares fee income vs IL to determine if position is profitable
-- **Smart Warnings** - Alerts you to high IL situations
+**💰 Bounty:** [Daydreams Agent Bounties #7](https://github.com/daydreamsai/agent-bounties/issues/7)
+
+## 🎯 What It Does
+
+This agent helps liquidity providers understand their position performance by:
+- Calculating impermanent loss using the constant product formula (x × y = k)
+- Fetching real historical prices from CoinGecko API
+- Estimating fee APR based on pool type (stable vs volatile pairs)
+- Providing net P&L analysis (IL + fees)
+- Giving actionable recommendations
 
 ## 🚀 Quick Start
 
-### Installation
-
+### Health Check
 ```bash
-npm install
+curl https://lp-impermanent-loss-estimator-production.up.railway.app/health
 ```
 
-### Running Locally
-
+### List Available Entrypoints
 ```bash
-npm run dev
+curl https://lp-impermanent-loss-estimator-production.up.railway.app/entrypoints
 ```
 
-### Deployment
-
-Deploy to any platform supporting Node.js applications. The agent is accessible via x402 protocol.
-
-## 📊 Usage Examples
-
-### Example 1: ETH/USDC Pool (7-day window)
-
-```json
-{
-  "token0_symbol": "ETH",
-  "token1_symbol": "USDC",
-  "token_weights": [0.5, 0.5],
-  "deposit_amounts": [5000, 5000],
-  "window_hours": 168
-}
-```
-
-**Expected Output:**
-```json
-{
-  "IL_percent": -2.1543,
-  "fee_apr_est": 45.60,
-  "net_apr_est": 34.12,
-  "volume_window": 840000,
-  "price_change_percent": 8.50,
-  "il_annualized_percent": -11.48,
-  "estimated_tvl": 10000000,
-  "estimated_daily_volume": 120000,
-  "fee_tier_percent": 0.300,
-  "notes": [
-    "⚠️ High impermanent loss - significant price divergence detected",
-    "✅ Fee income exceeds annualized IL - profitable position",
-    "Price ratio changed by 8.50% over the period",
-    "Pool type: ETH/USDC with 0.30% fee tier"
-  ]
-}
-```
-
-### Example 2: USDC/USDT Stablecoin Pool
-
-```json
-{
-  "token0_symbol": "USDC",
-  "token1_symbol": "USDT",
-  "token_weights": [0.5, 0.5],
-  "deposit_amounts": [10000, 10000],
-  "window_hours": 168
-}
-```
-
-**Expected Output:**
-```json
-{
-  "IL_percent": -0.0012,
-  "fee_apr_est": 18.25,
-  "net_apr_est": 18.23,
-  "volume_window": 7000000,
-  "price_change_percent": 0.15,
-  "il_annualized_percent": -0.02,
-  "estimated_tvl": 20000000,
-  "estimated_daily_volume": 10000000,
-  "fee_tier_percent": 0.050,
-  "notes": [
-    "Low impermanent loss - price ratio remained stable",
-    "✅ Fee income exceeds annualized IL - profitable position",
-    "Price ratio changed by 0.15% over the period",
-    "Pool type: USDC/USDT with 0.05% fee tier"
-  ]
-}
-```
-
-### Example 3: ETH/WBTC Pool
-
-```json
-{
-  "token0_symbol": "ETH",
-  "token1_symbol": "WBTC",
-  "token_weights": [0.5, 0.5],
-  "deposit_amounts": [7500, 7500],
-  "window_hours": 336
-}
-```
-
-## 🧮 How It Works
-
-### Impermanent Loss Formula
-
-For constant product AMMs (x × y = k):
-
-```
-IL = 2 × √(price_ratio) / (1 + price_ratio) - 1
-```
-
-Where `price_ratio = final_price / initial_price`
-
-### Fee APR Calculation
-
-```
-Annual Fees = Daily Volume × Fee Tier × 365
-APR = (Annual Fees / TVL) × 100
-```
-
-### Pool Type Classification
-
-The estimator intelligently classifies pools:
-
-- **Stablecoin Pools** (USDC/USDT): 0.05% fee, high volume/TVL ratio (0.5)
-- **ETH/Stablecoin**: 0.30% fee, very high volume/TVL ratio (1.2)
-- **ETH/BTC**: 0.30% fee, high volume/TVL ratio (0.8)
-- **Major/Major**: 0.30% fee, good volume/TVL ratio (0.6)
-- **Major/Stable**: 0.30% fee, good volume/TVL ratio (0.7)
-- **Default**: 0.30% fee, moderate volume/TVL ratio (0.3)
-
-## 📈 Supported Tokens
-
-Major tokens supported with CoinGecko integration:
-
-- **ETH** / WETH - Ethereum
-- **BTC** / WBTC - Bitcoin
-- **USDC** - USD Coin
-- **USDT** - Tether
-- **DAI** - Dai Stablecoin
-- **MATIC** - Polygon
-- **LINK** - Chainlink
-- **UNI** - Uniswap
-- **AAVE** - Aave
-- **CRV** - Curve DAO
-- **BAL** - Balancer
-
-## 🎓 Understanding the Output
-
-### Key Metrics
-
-- **IL_percent**: Impermanent loss as percentage (negative = loss)
-- **fee_apr_est**: Estimated annual percentage return from trading fees
-- **net_apr_est**: Net APR (fee income - annualized IL)
-- **volume_window**: Total trading volume in the time window
-- **price_change_percent**: How much the price ratio changed
-- **il_annualized_percent**: IL extrapolated to annual rate
-
-### Decision Making
-
-✅ **Profitable if**: `net_apr_est > 0` (fee income exceeds IL)
-
-⚠️ **Risky if**: 
-- `IL_percent < -5%` (high divergence)
-- `net_apr_est < 0` (losing money overall)
-
-## 🔧 API Endpoints
-
-### calculate_il
-
-Calculate impermanent loss and fee estimates.
-
-**Input Schema:**
-```typescript
-{
-  pool_address?: string;        // Optional pool address
-  token0_symbol: string;         // First token (ETH, USDC, etc.)
-  token1_symbol: string;         // Second token
-  token_weights?: [number, number]; // Default [0.5, 0.5]
-  deposit_amounts: [number, number]; // USD value of each token
-  window_hours?: number;         // Default 168 (7 days)
-}
-```
-
-**Output Schema:**
-```typescript
-{
-  IL_percent: number;            // Impermanent loss %
-  fee_apr_est: number;           // Estimated fee APR
-  net_apr_est: number;           // Net APR (fees - IL)
-  volume_window: number;         // Trading volume in window
-  price_change_percent: number;  // Price ratio change
-  il_annualized_percent: number; // Annualized IL
-  estimated_tvl: number;         // Estimated pool TVL
-  estimated_daily_volume: number; // Estimated daily volume
-  fee_tier_percent: number;      // Pool fee tier
-  notes: string[];               // Contextual warnings/info
-}
-```
-
-### echo
-
-Simple echo endpoint for testing.
-
-## 🧪 Testing
-
-Test the agent locally:
-
+### Calculate Impermanent Loss
 ```bash
-# Start the agent
-npm run dev
-
-# In another terminal, test with curl
-curl -X POST http://localhost:3000/calculate_il \
+curl -X POST https://lp-impermanent-loss-estimator-production.up.railway.app/entrypoints/calculate-il \
   -H "Content-Type: application/json" \
   -d '{
-    "token0_symbol": "ETH",
-    "token1_symbol": "USDC",
-    "deposit_amounts": [5000, 5000],
-    "window_hours": 168
+    "token0Symbol": "ETH",
+    "token1Symbol": "USDC",
+    "token0Amount": 1.5,
+    "token1Amount": 3000,
+    "daysHeld": 30
   }'
 ```
 
-## 📊 Backtesting Accuracy
+**Example Response:**
+```json
+{
+  "token0Symbol": "ETH",
+  "token1Symbol": "USDC",
+  "initialValue": 5025.50,
+  "currentValue": 5150.25,
+  "hodlValue": 5200.00,
+  "impermanentLoss": -49.75,
+  "impermanentLossPercent": -0.96,
+  "estimatedFeeAPR": 30.0,
+  "estimatedFeesEarned": 123.50,
+  "netProfitLoss": 73.75,
+  "netProfitLossPercent": 1.47,
+  "recommendation": "✅ Fees are covering IL well. Position looks healthy.",
+  "priceChange": {
+    "token0": 5.2,
+    "token1": 0.1,
+    "ratio": 5.1
+  }
+}
+```
 
-The estimator achieves <10% error vs realized pool data by:
+## 💳 x402 Payment Integration
 
-1. Using real historical price data (CoinGecko)
-2. Applying proven IL mathematical formulas
-3. Intelligent pool classification for volume/fee estimation
-4. Conservative TVL estimates based on deposit size
+Built with [@lucid-dreams/agent-kit](https://www.npmjs.com/package/@lucid-dreams/agent-kit) and supports x402 micropayments:
 
-## 🛠️ Technical Details
+- **Price per calculation:** $0.10 USDC
+- **Payment network:** Base
+- **Wallet address:** `0xe7A413d4192fdee1bB5ecdf9D07A1827Eb15Bc1F`
 
-### Architecture
+## 🪙 Supported Tokens
 
-- **Agent Framework**: @lucid-dreams/agent-kit
-- **Validation**: Zod schemas
-- **Price Data**: CoinGecko Free API
-- **Calculation Engine**: Pure TypeScript math
+- **ETH / WETH** (Ethereum)
+- **BTC / WBTC** (Bitcoin)
+- **USDC** (USD Coin)
+- **USDT** (Tether)
+- **DAI** (Dai Stablecoin)
 
-### Performance
+## 📊 How It Works
 
-- Average response time: <2 seconds
-- Rate limits: CoinGecko free tier (10-50 calls/min)
-- Concurrent requests: Handled by agent-kit
+### 1. Fetch Historical Prices
+Uses CoinGecko API to get token prices from `daysHeld` ago and current prices.
 
-## 🚨 Limitations & Disclaimers
+### 2. Calculate Impermanent Loss
+Applies the constant product AMM formula:
+```
+V_pool = 2 × √(k × P_ratio) × P_token1
+where k = x × y (constant product)
+```
 
-1. **Estimates Only**: Fee APR is estimated based on pool type heuristics
-2. **Historical Data**: Past performance doesn't guarantee future results
-3. **No Real-Time**: Prices are fetched from CoinGecko (not on-chain)
-4. **Simplified Model**: Assumes constant product AMM (x × y = k)
-5. **Not Financial Advice**: Use for educational and research purposes only
+### 3. Estimate Fee APR
+Models fee earnings based on pool type:
+- **Volatile pairs** (ETH/BTC): ~30% APR
+- **Stable pairs** (USDC/USDT): ~3% APR
 
-## 🎯 Acceptance Criteria Status
+### 4. Net P&L Analysis
+```
+Net P&L = Impermanent Loss + Fees Earned
+```
 
-✅ **Backtest error under 10%** - Uses real price data + proven formulas  
-✅ **Accurate IL calculations** - Standard constant product AMM math  
-✅ **Domain deployment ready** - Deployable to any Node.js host  
-✅ **x402 reachable** - Compatible with agent-kit protocol
+### 5. Provide Recommendation
+- ✅ Healthy: Fees covering IL well
+- ⚠️ Warning: Significant IL detected
+- 📊 Monitor: Moderate IL situation
 
-## 📝 Example Use Cases
+## 🛠️ Technical Stack
 
-1. **Pre-deposit Analysis**: Check expected IL before adding liquidity
-2. **Position Monitoring**: Track ongoing IL vs fee income
-3. **Pool Comparison**: Compare different token pairs for profitability
-4. **Risk Assessment**: Identify high-divergence scenarios
-5. **Rebalancing Decisions**: Determine when to exit positions
+- **Framework:** [@lucid-dreams/agent-kit](https://www.npmjs.com/package/@lucid-dreams/agent-kit) (Hono-based)
+- **Runtime:** Node.js v20 with tsx
+- **Data Source:** CoinGecko API
+- **Deployment:** Railway
+- **Payment Protocol:** x402
+- **Language:** TypeScript
+
+## 📁 Project Structure
+
+```
+.
+├── index.ts           # Main application
+├── package.json       # Dependencies
+├── railway.json       # Railway configuration
+├── nixpacks.toml      # Build configuration
+└── README.md          # Documentation
+```
+
+## 🔧 Local Development
+
+### Prerequisites
+- Node.js v20+
+- npm or yarn
+
+### Installation
+```bash
+# Clone the repository
+git clone https://github.com/YOUR_USERNAME/lp-impermanent-loss-estimator.git
+cd lp-impermanent-loss-estimator
+
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+```
+
+### Environment Variables
+```env
+# Optional - for x402 payments
+FACILITATOR_URL=https://facilitator.x402.io
+ADDRESS=0xe7A413d4192fdee1bB5ecdf9D07A1827Eb15Bc1F
+NETWORK=base
+DEFAULT_PRICE=$0.10
+```
+
+## 🚀 Deployment
+
+### Deploy to Railway
+1. Fork this repository
+2. Connect to Railway
+3. Set environment variables
+4. Deploy!
+
+Railway will auto-detect the configuration from `nixpacks.toml`.
+
+## 🧪 Testing
+
+### Test with curl
+```bash
+# Basic calculation
+curl -X POST https://YOUR_URL/entrypoints/calculate-il \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token0Symbol": "ETH",
+    "token1Symbol": "USDC",
+    "token0Amount": 2.0,
+    "token1Amount": 5000,
+    "daysHeld": 7
+  }'
+```
+
+### Test with Daydreams Agent
+```typescript
+const result = await agent.call('calculate-il', {
+  token0Symbol: 'ETH',
+  token1Symbol: 'USDC',
+  token0Amount: 1.5,
+  token1Amount: 3000,
+  daysHeld: 30
+});
+```
+
+## 📖 Agent Discovery
+
+This agent implements standard discovery endpoints:
+
+- `GET /entrypoints` - List all available functions
+- `GET /.well-known/agent.json` - Agent metadata
+- `GET /.well-known/agent-card.json` - Agent card info
+
+## 🎯 Use Cases
+
+1. **LP Position Analysis** - Check if your LP position is profitable
+2. **Strategy Comparison** - Compare HODLing vs LPing
+3. **Risk Assessment** - Identify high-IL situations
+4. **Performance Tracking** - Monitor positions over time
+5. **Fee Optimization** - Understand if fees compensate for IL
 
 ## 🤝 Contributing
 
-This is a bounty submission. For improvements:
-1. Fork the repo
-2. Create feature branch
-3. Submit PR with tests
-4. Link to original issue
+Contributions welcome! Please open an issue or PR.
 
 ## 📄 License
 
-MIT License - feel free to use and modify!
+MIT
 
-## 🌟 what we tried to accomplish 
+## 🏆 Bounty Details
 
-1. **Simple but Powerful**: Clean API, complex math hidden
-2. **Real Data**: No mock data - actual CoinGecko prices
-3. **Smart Defaults**: Intelligent pool classification
-4. **Actionable Insights**: Clear warnings and profitability analysis
-5. **Production Ready**: Full TypeScript, error handling, documentation
+- **Program:** Daydreams Agent Bounties
+- **Issue:** [#7 - Build an Agent](https://github.com/daydreamsai/agent-bounties/issues/7)
+- **Submission Date:** October 31, 2025
+- **Developer:** DeganAI
+
+## 🔗 Links
+
+- **Live Agent:** https://YOUR_RAILWAY_URL_HERE.railway.app
+- **Source Code:** https://github.com/YOUR_USERNAME/lp-impermanent-loss-estimator
+- **Bounty Issue:** https://github.com/daydreamsai/agent-bounties/issues/7
+- **Agent Kit:** https://www.npmjs.com/package/@lucid-dreams/agent-kit
 
 ---
 
-Built with ❤️ for the DeFi community
+**Built with ❤️ using @lucid-dreams/agent-kit and x402**
