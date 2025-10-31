@@ -1,12 +1,18 @@
+console.log("📦 Step 1: Starting imports...");
 import { z } from "zod";
+console.log("✅ Step 1a: zod imported");
 import { createAgentApp } from "@lucid-dreams/agent-kit";
+console.log("✅ Step 1b: agent-kit imported");
 import { serve } from "@hono/node-server";
+console.log("✅ Step 1c: hono/node-server imported");
 
+console.log("📦 Step 2: Creating agent app...");
 const { app, addEntrypoint } = createAgentApp({
   name: "lp-impermanent-loss-estimator",
   version: "0.1.0",
   description: "Calculate IL and fee APR for any LP position or simulated deposit",
 });
+console.log("✅ Step 2: Agent app created");
 
 // Core IL calculation for constant product AMM (x * y = k)
 function calculateImpermanentLoss(
@@ -23,6 +29,7 @@ function calculateImpermanentLoss(
 }
 
 // Add health check endpoint
+console.log("📦 Step 3: Adding health endpoint...");
 addEntrypoint({
   key: "health",
   description: "Health check endpoint",
@@ -38,6 +45,7 @@ addEntrypoint({
     };
   },
 });
+console.log("✅ Step 3: Health endpoint added");
 
 // Type definition for CoinGecko API response
 interface CoinGeckoResponse {
@@ -176,6 +184,7 @@ function estimatePoolMetrics(
   return { estimatedTVL, estimatedDailyVolume, feeTier };
 }
 
+console.log("📦 Step 4: Adding calculate_il endpoint...");
 addEntrypoint({
   key: "calculate_il",
   description: "Calculate impermanent loss and fee APR for LP position",
@@ -295,8 +304,10 @@ addEntrypoint({
     }
   },
 });
+console.log("✅ Step 4: calculate_il endpoint added");
 
 // Simple echo endpoint for testing
+console.log("📦 Step 5: Adding echo endpoint...");
 addEntrypoint({
   key: "echo",
   description: "Echo a message",
@@ -308,7 +319,9 @@ addEntrypoint({
     };
   },
 });
+console.log("✅ Step 5: echo endpoint added");
 
+console.log("📦 Step 6: Configuring server...");
 // Start the HTTP server using @hono/node-server
 const port = Number(process.env.PORT) || 3000;
 const hostname = "0.0.0.0";
@@ -320,8 +333,11 @@ console.log(`📊 Port: ${port}`);
 console.log(`🌐 Hostname: ${hostname}`);
 console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || 'Not configured'}`);
 console.log(`🔧 Node Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log(`📍 Working Directory: ${process.cwd()}`);
+console.log(`🔢 Node Version: ${process.version}`);
 console.log("----------------------------------------------");
 console.log("⏳ Starting server...");
+console.log("📦 Step 7: Calling serve() function...");
 
 try {
   // Start server - this is synchronous but the listening happens async
@@ -333,6 +349,7 @@ try {
     },
     (info) => {
       // This callback fires when server is actually listening
+      console.log("🎉🎉🎉 SUCCESS! SERVER IS NOW LISTENING! 🎉🎉🎉");
       console.log("✅ SERVER IS READY AND LISTENING");
       console.log(`🌍 Server URL: http://${hostname}:${info.port}`);
       console.log("----------------------------------------------");
@@ -343,6 +360,8 @@ try {
       console.log("==============================================");
     }
   );
+  console.log("✅ Step 7: serve() function called successfully");
+  console.log("⏳ Waiting for server to bind to port...");
 
   // Graceful shutdown handlers
   process.on("SIGTERM", () => {
