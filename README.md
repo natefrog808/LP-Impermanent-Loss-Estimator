@@ -224,8 +224,8 @@ MIT
 
 ## 🔗 Links
 
-- **Live Agent:** https://YOUR_RAILWAY_URL_HERE.railway.app
-- **Source Code:** https://github.com/YOUR_USERNAME/lp-impermanent-loss-estimator
+- **Live Agent:** https://lp-impermanent-loss-estimator-production.up.railway.app/
+- **Source Code:** https://github.com/natefrog808/lp-impermanent-loss-estimator
 - **Bounty Issue:** https://github.com/daydreamsai/agent-bounties/issues/7
 - **Agent Kit:** https://www.npmjs.com/package/@lucid-dreams/agent-kit
 
