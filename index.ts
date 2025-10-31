@@ -311,40 +311,60 @@ addEntrypoint({
 
 // Start the HTTP server using @hono/node-server
 const port = Number(process.env.PORT) || 3000;
+const hostname = "0.0.0.0";
 
-console.log("🚀 Starting LP Impermanent Loss Estimator...");
+console.log("==============================================");
+console.log("🚀 LP Impermanent Loss Estimator");
+console.log("==============================================");
 console.log(`📊 Port: ${port}`);
+console.log(`🌐 Hostname: ${hostname}`);
 console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || 'Not configured'}`);
+console.log(`🔧 Node Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log("----------------------------------------------");
+console.log("⏳ Starting server...");
 
-// Start server and keep reference
-const server = serve({
-  fetch: app.fetch,
-  port: port,
-  hostname: "0.0.0.0",
-});
+try {
+  // Start server - this is synchronous but the listening happens async
+  const server = serve(
+    {
+      fetch: app.fetch,
+      port: port,
+      hostname: hostname,
+    },
+    (info) => {
+      // This callback fires when server is actually listening
+      console.log("✅ SERVER IS READY AND LISTENING");
+      console.log(`🌍 Server URL: http://${hostname}:${info.port}`);
+      console.log("----------------------------------------------");
+      console.log("📡 Available Endpoints:");
+      console.log("   POST /health - Health check");
+      console.log("   POST /calculate_il - Calculate impermanent loss");
+      console.log("   POST /echo - Echo test");
+      console.log("==============================================");
+    }
+  );
 
-console.log(`✅ Server running on http://0.0.0.0:${port}`);
-console.log("📡 Endpoints:");
-console.log("   POST /health - Health check");
-console.log("   POST /calculate_il - Calculate impermanent loss");
-console.log("   POST /echo - Echo test");
+  // Graceful shutdown handlers
+  process.on("SIGTERM", () => {
+    console.log("\n⏸️  SIGTERM received, shutting down gracefully...");
+    server.close(() => {
+      console.log("✅ Server closed");
+      process.exit(0);
+    });
+  });
 
-// Keepalive interval to prevent process exit
-const keepalive = setInterval(() => {
-  // This ensures Node.js event loop stays active
-}, 60000);
+  process.on("SIGINT", () => {
+    console.log("\n⏸️  SIGINT received, shutting down gracefully...");
+    server.close(() => {
+      console.log("✅ Server closed");
+      process.exit(0);
+    });
+  });
 
-// Keep process alive
-process.on("SIGTERM", () => {
-  console.log("⏸️  SIGTERM received, shutting down gracefully...");
-  clearInterval(keepalive);
-  process.exit(0);
-});
-
-process.on("SIGINT", () => {
-  console.log("⏸️  SIGINT received, shutting down gracefully...");
-  clearInterval(keepalive);
-  process.exit(0);
-});
+} catch (error) {
+  console.error("❌ FATAL ERROR STARTING SERVER:");
+  console.error(error);
+  process.exit(1);
+}
 
 export default app;
