@@ -22,6 +22,23 @@ function calculateImpermanentLoss(
   return { ilPercent, hodlValue, lpValue };
 }
 
+// Add health check endpoint
+addEntrypoint({
+  key: "health",
+  description: "Health check endpoint",
+  input: z.object({}).optional() as any,
+  async handler() {
+    return {
+      output: { 
+        status: "healthy",
+        timestamp: Date.now(),
+        version: "0.1.0"
+      },
+      usage: { total_tokens: 10 },
+    };
+  },
+});
+
 // Type definition for CoinGecko API response
 interface CoinGeckoResponse {
   prices: [number, number][];
