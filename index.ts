@@ -25,17 +25,13 @@ console.log("✅ Step 2: Agent app created");
 function calculateImpermanentLoss(
   priceRatio: number
 ): { ilPercent: number; hodlValue: number; lpValue: number } {
-  // Price ratio = final_price / initial_price
-  // IL formula: 2 * sqrt(price_ratio) / (1 + price_ratio) - 1
   const sqrtRatio = Math.sqrt(priceRatio);
   const lpValue = (2 * sqrtRatio) / (1 + priceRatio);
-  const hodlValue = 1; // normalized
+  const hodlValue = 1;
   const ilPercent = (lpValue - hodlValue) * 100;
-
   return { ilPercent, hodlValue, lpValue };
 }
 
-// Add health check endpoint - FREE
 console.log("📦 Step 3: Adding health endpoint...");
 addEntrypoint({
   key: "health",
@@ -56,52 +52,34 @@ addEntrypoint({
 });
 console.log("✅ Step 3: Health endpoint added");
 
-// Type definition for CoinGecko API response
 interface CoinGeckoResponse {
   prices: [number, number][];
 }
 
-// Fetch historical price data from CoinGecko
 async function fetchHistoricalPrices(
   token0Symbol: string,
   token1Symbol: string,
   daysBack: number
 ): Promise<{ initialRatio: number; finalRatio: number; prices: any[] }> {
   const coinGeckoIds: Record<string, string> = {
-    ETH: "ethereum",
-    WETH: "ethereum",
-    BTC: "bitcoin",
-    WBTC: "wrapped-bitcoin",
-    USDC: "usd-coin",
-    USDT: "tether",
-    DAI: "dai",
-    MATIC: "matic-network",
-    LINK: "chainlink",
-    UNI: "uniswap",
-    AAVE: "aave",
-    CRV: "curve-dao-token",
-    BAL: "balancer",
+    ETH: "ethereum", WETH: "ethereum", BTC: "bitcoin", WBTC: "wrapped-bitcoin",
+    USDC: "usd-coin", USDT: "tether", DAI: "dai", MATIC: "matic-network",
+    LINK: "chainlink", UNI: "uniswap", AAVE: "aave", CRV: "curve-dao-token", BAL: "balancer",
   };
 
   const token0Id = coinGeckoIds[token0Symbol.toUpperCase()] || token0Symbol.toLowerCase();
   const token1Id = coinGeckoIds[token1Symbol.toUpperCase()] || token1Symbol.toLowerCase();
 
   try {
-    // Fetch historical data for both tokens
     const [data0, data1] = await Promise.all([
-      fetch(
-        `https://api.coingecko.com/api/v3/coins/${token0Id}/market_chart?vs_currency=usd&days=${daysBack}`
-      ).then((r) => r.json()) as Promise<CoinGeckoResponse>,
-      fetch(
-        `https://api.coingecko.com/api/v3/coins/${token1Id}/market_chart?vs_currency=usd&days=${daysBack}`
-      ).then((r) => r.json()) as Promise<CoinGeckoResponse>,
+      fetch(`https://api.coingecko.com/api/v3/coins/${token0Id}/market_chart?vs_currency=usd&days=${daysBack}`).then((r) => r.json()) as Promise<CoinGeckoResponse>,
+      fetch(`https://api.coingecko.com/api/v3/coins/${token1Id}/market_chart?vs_currency=usd&days=${daysBack}`).then((r) => r.json()) as Promise<CoinGeckoResponse>,
     ]);
 
     if (!data0.prices || !data1.prices) {
       throw new Error("Failed to fetch price data");
     }
 
-    // Calculate price ratios (token0/token1)
     const initialPrice0 = data0.prices[0][1];
     const initialPrice1 = data1.prices[0][1];
     const finalPrice0 = data0.prices[data0.prices.length - 1][1];
@@ -123,73 +101,46 @@ async function fetchHistoricalPrices(
   }
 }
 
-// Estimate fee APR based on volume and TVL
-function estimateFeeAPR(
-  dailyVolume: number,
-  tvl: number,
-  feeTier: number = 0.003 // 0.3% default
-): number {
+function estimateFeeAPR(dailyVolume: number, tvl: number, feeTier: number = 0.003): number {
   if (tvl === 0) return 0;
-  
-  // Annual fee revenue = daily volume * fee tier * 365
   const annualFees = dailyVolume * feeTier * 365;
-  
-  // APR = annual fees / TVL
   const apr = (annualFees / tvl) * 100;
-  
   return apr;
 }
 
-// Simulate volume based on token pair characteristics
 function estimatePoolMetrics(
   token0: string,
   token1: string,
   depositValue: number
 ): { estimatedTVL: number; estimatedDailyVolume: number; feeTier: number } {
-  // Volume/TVL ratios for different pool types
   const poolTypes: Record<string, { volumeRatio: number; feeTier: number }> = {
-    stablecoin: { volumeRatio: 0.5, feeTier: 0.0005 }, // USDC/USDT - high volume, low fee
-    eth_stablecoin: { volumeRatio: 1.2, feeTier: 0.003 }, // ETH/USDC - very high volume
-    eth_btc: { volumeRatio: 0.8, feeTier: 0.003 }, // ETH/WBTC - high volume
-    major_major: { volumeRatio: 0.6, feeTier: 0.003 }, // UNI/LINK - good volume
-    major_stable: { volumeRatio: 0.7, feeTier: 0.003 }, // AAVE/USDC - good volume
-    default: { volumeRatio: 0.3, feeTier: 0.003 }, // Others - lower volume
+    stablecoin: { volumeRatio: 0.5, feeTier: 0.0005 },
+    eth_stablecoin: { volumeRatio: 1.2, feeTier: 0.003 },
+    eth_btc: { volumeRatio: 0.8, feeTier: 0.003 },
+    major_major: { volumeRatio: 0.6, feeTier: 0.003 },
+    major_stable: { volumeRatio: 0.7, feeTier: 0.003 },
+    default: { volumeRatio: 0.3, feeTier: 0.003 },
   };
 
   const stablecoins = ["USDC", "USDT", "DAI"];
   const majorTokens = ["ETH", "WETH", "BTC", "WBTC", "MATIC", "LINK", "UNI", "AAVE"];
-
   let poolType = "default";
 
   if (stablecoins.includes(token0) && stablecoins.includes(token1)) {
     poolType = "stablecoin";
-  } else if (
-    (["ETH", "WETH"].includes(token0) && stablecoins.includes(token1)) ||
-    (["ETH", "WETH"].includes(token1) && stablecoins.includes(token0))
-  ) {
+  } else if ((["ETH", "WETH"].includes(token0) && stablecoins.includes(token1)) || (["ETH", "WETH"].includes(token1) && stablecoins.includes(token0))) {
     poolType = "eth_stablecoin";
-  } else if (
-    (["ETH", "WETH"].includes(token0) && ["BTC", "WBTC"].includes(token1)) ||
-    (["ETH", "WETH"].includes(token1) && ["BTC", "WBTC"].includes(token0))
-  ) {
+  } else if ((["ETH", "WETH"].includes(token0) && ["BTC", "WBTC"].includes(token1)) || (["ETH", "WETH"].includes(token1) && ["BTC", "WBTC"].includes(token0))) {
     poolType = "eth_btc";
   } else if (majorTokens.includes(token0) && majorTokens.includes(token1)) {
     poolType = "major_major";
-  } else if (
-    (majorTokens.includes(token0) && stablecoins.includes(token1)) ||
-    (majorTokens.includes(token1) && stablecoins.includes(token0))
-  ) {
+  } else if ((majorTokens.includes(token0) && stablecoins.includes(token1)) || (majorTokens.includes(token1) && stablecoins.includes(token0))) {
     poolType = "major_stable";
   }
 
   const { volumeRatio, feeTier } = poolTypes[poolType];
-
-  // Estimate TVL (assume user deposit is 0.1% of pool for calculation)
   const estimatedTVL = depositValue * 1000;
-
-  // Estimate daily volume based on TVL
   const estimatedDailyVolume = estimatedTVL * volumeRatio;
-
   return { estimatedTVL, estimatedDailyVolume, feeTier };
 }
 
@@ -201,26 +152,13 @@ addEntrypoint({
     pool_address: z.string().optional().describe("LP pool address (optional)"),
     token0_symbol: z.string().describe("First token symbol (e.g., ETH, USDC)"),
     token1_symbol: z.string().describe("Second token symbol (e.g., USDT, DAI)"),
-    token_weights: z
-      .array(z.number())
-      .length(2)
-      .default([0.5, 0.5])
-      .describe("Token weight distribution (default 50/50)"),
-    deposit_amounts: z
-      .array(z.number())
-      .length(2)
-      .describe("Amount of each token in USD value"),
+    token_weights: z.array(z.number()).length(2).default([0.5, 0.5]).describe("Token weight distribution (default 50/50)"),
+    deposit_amounts: z.array(z.number()).length(2).describe("Amount of each token in USD value"),
     window_hours: z.number().default(168).describe("Historical window in hours (default 7 days)"),
   }) as any,
   async handler({ input }: { input: any }) {
     try {
-      const {
-        token0_symbol,
-        token1_symbol,
-        deposit_amounts,
-        window_hours,
-      } = input;
-
+      const { token0_symbol, token1_symbol, deposit_amounts, window_hours } = input;
       const daysBack = Math.ceil(window_hours / 24);
       const priceData = await fetchHistoricalPrices(token0_symbol, token1_symbol, daysBack);
       const priceRatio = priceData.finalRatio / priceData.initialRatio;
@@ -230,21 +168,13 @@ addEntrypoint({
       const feeAPR = estimateFeeAPR(poolMetrics.estimatedDailyVolume, poolMetrics.estimatedTVL, poolMetrics.feeTier);
       const ilAnnualized = ilResult.ilPercent * (365 / daysBack);
       const netAPR = feeAPR + ilAnnualized;
-
       const notes = [];
-      if (Math.abs(ilResult.ilPercent) < 1) {
-        notes.push("Low impermanent loss - price ratio remained stable");
-      } else if (Math.abs(ilResult.ilPercent) > 10) {
-        notes.push("⚠️ High impermanent loss - significant price divergence detected");
-      }
-      if (feeAPR > Math.abs(ilAnnualized)) {
-        notes.push("✅ Fee income exceeds annualized IL - profitable position");
-      } else {
-        notes.push("⚠️ IL may exceed fee income - consider rebalancing");
-      }
+      if (Math.abs(ilResult.ilPercent) < 1) notes.push("Low impermanent loss - price ratio remained stable");
+      else if (Math.abs(ilResult.ilPercent) > 10) notes.push("⚠️ High impermanent loss - significant price divergence detected");
+      if (feeAPR > Math.abs(ilAnnualized)) notes.push("✅ Fee income exceeds annualized IL - profitable position");
+      else notes.push("⚠️ IL may exceed fee income - consider rebalancing");
       notes.push(`Price ratio changed by ${((priceRatio - 1) * 100).toFixed(2)}% over the period`);
       notes.push(`Pool type: ${token0_symbol}/${token1_symbol} with ${(poolMetrics.feeTier * 100).toFixed(2)}% fee tier`);
-
       const volumeWindow = poolMetrics.estimatedDailyVolume * daysBack;
 
       return {
@@ -279,7 +209,6 @@ addEntrypoint({
 });
 console.log("✅ Step 4: calculate_il endpoint added");
 
-// Simple echo endpoint for testing - FREE
 console.log("📦 Step 5: Adding echo endpoint...");
 addEntrypoint({
   key: "echo",
@@ -329,26 +258,58 @@ try {
       console.log("   POST /calculate_il - Calculate IL ($0.01 USDC)");
       console.log("   POST /echo - Echo test (FREE)");
       console.log("==============================================");
+      console.log("🔄 Server is stable and waiting for requests...");
     }
   );
+  
   console.log("✅ Step 7: serve() function called successfully");
   console.log("⏳ Waiting for server to bind to port...");
 
-  process.on("SIGTERM", () => {
-    console.log("\n⏸️  SIGTERM received, shutting down gracefully...");
+  // Keep process alive with interval
+  const keepAlive = setInterval(() => {
+    // Log every 60 seconds to show server is still running
+    console.log(`⏰ Server uptime: ${Math.floor(process.uptime())} seconds`);
+  }, 60000);
+
+  // Graceful shutdown
+  let isShuttingDown = false;
+  
+  const shutdown = (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    
+    console.log(`\n⏸️  ${signal} received, shutting down gracefully...`);
+    clearInterval(keepAlive);
+    
     server.close(() => {
-      console.log("✅ Server closed");
+      console.log("✅ Server closed successfully");
       process.exit(0);
     });
+    
+    // Force exit after 10 seconds
+    setTimeout(() => {
+      console.error("⚠️  Forced shutdown after timeout");
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  
+  // Catch unhandled errors
+  process.on('uncaughtException', (error) => {
+    console.error("💥 UNCAUGHT EXCEPTION:");
+    console.error(error);
+    shutdown("UNCAUGHT_EXCEPTION");
+  });
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error("💥 UNHANDLED REJECTION:");
+    console.error('Promise:', promise);
+    console.error('Reason:', reason);
+    // Don't exit on unhandled rejection, just log it
   });
 
-  process.on("SIGINT", () => {
-    console.log("\n⏸️  SIGINT received, shutting down gracefully...");
-    server.close(() => {
-      console.log("✅ Server closed");
-      process.exit(0);
-    });
-  });
 } catch (error) {
   console.error("❌ FATAL ERROR STARTING SERVER:");
   console.error(error);
