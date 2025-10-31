@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createAgentApp } from "@lucid-dreams/agent-kit";
-import { serve } from "@hono/node-server";
+import { createServer } from "node:http";
 
 const { app, addEntrypoint } = createAgentApp({
   name: "lp-impermanent-loss-estimator",
@@ -309,37 +309,45 @@ addEntrypoint({
   },
 });
 
-// Serve the application
+// Start the HTTP server using Node's native http module
 const port = Number(process.env.PORT) || 3000;
 
 console.log("🚀 Starting LP Impermanent Loss Estimator...");
 console.log(`📊 Port: ${port}`);
 console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || 'Not configured'}`);
 
-// Start server - this blocks and keeps the process alive
-serve(
-  {
-    fetch: app.fetch,
-    port,
-    hostname: "0.0.0.0",
-  },
-  (info) => {
-    console.log(`✅ Server running on http://${info.address}:${info.port}`);
-    console.log("📡 Endpoints:");
-    console.log("   POST /calculate_il - Calculate impermanent loss");
-    console.log("   POST /echo - Echo test");
-  }
-);
+// Create HTTP server
+const server = createServer(app.fetch);
+
+server.listen(port, "0.0.0.0", () => {
+  console.log(`✅ Server running on http://0.0.0.0:${port}`);
+  console.log("📡 Endpoints:");
+  console.log("   POST /health - Health check");
+  console.log("   POST /calculate_il - Calculate impermanent loss");
+  console.log("   POST /echo - Echo test");
+});
 
 // Handle shutdown gracefully
 process.on("SIGTERM", () => {
   console.log("⏸️  SIGTERM received, shutting down gracefully...");
-  process.exit(0);
+  server.close(() => {
+    console.log("✅ Server closed");
+    process.exit(0);
+  });
 });
 
 process.on("SIGINT", () => {
   console.log("⏸️  SIGINT received, shutting down gracefully...");
-  process.exit(0);
+  server.close(() => {
+    console.log("✅ Server closed");
+    process.exit(0);
+  });
+});
+
+// Handle errors
+server.on("error", (error) => {
+  console.error("❌ Server error:", error);
+  process.exit(1);
 });
 
 export default app;
