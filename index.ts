@@ -1,319 +1,327 @@
-// Crypto polyfill for Node.js environments
-import { webcrypto } from 'node:crypto';
-if (!globalThis.crypto) {
-  // @ts-ignore
-  globalThis.crypto = webcrypto;
+import { createAgentApp } from '@lucid-dreams/agent-kit';
+import { z } from 'zod';
+
+// ============================================
+// STEP 1: Environment & Configuration
+// ============================================
+console.log('[STARTUP] ===== LP IMPERMANENT LOSS ESTIMATOR =====');
+console.log('[STARTUP] Step 1: Loading environment variables...');
+
+const PORT = parseInt(process.env.PORT || '3000', 10);
+const HOST = '0.0.0.0'; // Railway requires binding to 0.0.0.0
+const FACILITATOR_URL = process.env.FACILITATOR_URL || '';
+const WALLET_ADDRESS = process.env.ADDRESS || '';
+const NETWORK = process.env.NETWORK || 'base';
+const DEFAULT_PRICE = process.env.DEFAULT_PRICE || '$0.10';
+
+console.log('[CONFIG] Port:', PORT);
+console.log('[CONFIG] Host:', HOST);
+console.log('[CONFIG] Facilitator URL:', FACILITATOR_URL ? 'Set ✓' : 'Not set ✗');
+console.log('[CONFIG] Wallet Address:', WALLET_ADDRESS ? 'Set ✓' : 'Not set ✗');
+console.log('[CONFIG] Network:', NETWORK);
+console.log('[CONFIG] Default Price:', DEFAULT_PRICE);
+
+// ============================================
+// STEP 2: Helper Functions
+// ============================================
+console.log('[STARTUP] Step 2: Setting up helper functions...');
+
+interface TokenPriceData {
+  current: number;
+  historical: number;
 }
 
-console.log("📦 Step 1: Starting imports...");
-import { z } from "zod";
-console.log("✅ Step 1a: zod imported");
-import { createAgentApp } from "@lucid-dreams/agent-kit";
-console.log("✅ Step 1b: agent-kit imported");
-import { serve } from "@hono/node-server";
-console.log("✅ Step 1c: hono/node-server imported");
-
-console.log("📦 Step 2: Creating agent app...");
-const { app, addEntrypoint } = createAgentApp({
-  name: "lp-impermanent-loss-estimator",
-  version: "0.1.0",
-  description: "Calculate IL and fee APR for any LP position or simulated deposit. Pricing: FREE for health/echo, $0.01 USDC per IL calculation.",
-});
-console.log("✅ Step 2: Agent app created");
-
-// Core IL calculation
-function calculateImpermanentLoss(priceRatio: number) {
-  const sqrtRatio = Math.sqrt(priceRatio);
-  const lpValue = (2 * sqrtRatio) / (1 + priceRatio);
-  const hodlValue = 1;
-  const ilPercent = (lpValue - hodlValue) * 100;
-  return { ilPercent, hodlValue, lpValue };
+interface PoolPosition {
+  token0Symbol: string;
+  token1Symbol: string;
+  token0Amount: number;
+  token1Amount: number;
+  entryPriceRatio: number;
+  daysHeld: number;
 }
 
-console.log("📦 Step 3: Adding health endpoint...");
-addEntrypoint({
-  key: "health",
-  description: "Health check endpoint - verify service is running (FREE)",
-  input: z.object({}).optional() as any,
-  async handler() {
-    return {
-      output: { 
-        status: "healthy",
-        timestamp: Date.now(),
-        version: "0.1.0",
-        uptime: process.uptime(),
-        pricing: "FREE"
-      },
-      usage: { total_tokens: 10 },
-    };
-  },
-});
-console.log("✅ Step 3: Health endpoint added");
-
-interface CoinGeckoResponse {
-  prices: [number, number][];
+interface ILCalculation {
+  token0Symbol: string;
+  token1Symbol: string;
+  initialValue: number;
+  currentValue: number;
+  hodlValue: number;
+  impermanentLoss: number;
+  impermanentLossPercent: number;
+  estimatedFeeAPR: number;
+  estimatedFeesEarned: number;
+  netProfitLoss: number;
+  netProfitLossPercent: number;
+  recommendation: string;
+  priceChange: {
+    token0: number;
+    token1: number;
+    ratio: number;
+  };
 }
 
-async function fetchHistoricalPrices(
-  token0Symbol: string,
-  token1Symbol: string,
-  daysBack: number
-): Promise<{ initialRatio: number; finalRatio: number; prices: any[] }> {
+// Fetch historical and current prices from CoinGecko
+async function fetchTokenPrices(
+  token0: string,
+  token1: string,
+  daysAgo: number
+): Promise<{ token0: TokenPriceData; token1: TokenPriceData }> {
+  console.log(`[PRICE_FETCH] Fetching prices for ${token0}/${token1} (${daysAgo} days ago)`);
+  
   const coinGeckoIds: Record<string, string> = {
-    ETH: "ethereum", WETH: "ethereum", BTC: "bitcoin", WBTC: "wrapped-bitcoin",
-    USDC: "usd-coin", USDT: "tether", DAI: "dai", MATIC: "matic-network",
-    LINK: "chainlink", UNI: "uniswap", AAVE: "aave", CRV: "curve-dao-token", BAL: "balancer",
+    ETH: 'ethereum',
+    WETH: 'ethereum',
+    BTC: 'bitcoin',
+    WBTC: 'wrapped-bitcoin',
+    USDC: 'usd-coin',
+    USDT: 'tether',
+    DAI: 'dai',
   };
 
-  const token0Id = coinGeckoIds[token0Symbol.toUpperCase()] || token0Symbol.toLowerCase();
-  const token1Id = coinGeckoIds[token1Symbol.toUpperCase()] || token1Symbol.toLowerCase();
+  const token0Id = coinGeckoIds[token0.toUpperCase()];
+  const token1Id = coinGeckoIds[token1.toUpperCase()];
 
-  // FIXED: Type the response properly
-  const [data0, data1] = await Promise.all([
-    fetch(`https://api.coingecko.com/api/v3/coins/${token0Id}/market_chart?vs_currency=usd&days=${daysBack}`)
-      .then(r => r.json()) as Promise<CoinGeckoResponse>,
-    fetch(`https://api.coingecko.com/api/v3/coins/${token1Id}/market_chart?vs_currency=usd&days=${daysBack}`)
-      .then(r => r.json()) as Promise<CoinGeckoResponse>,
+  if (!token0Id || !token1Id) {
+    throw new Error(`Unsupported token pair: ${token0}/${token1}`);
+  }
+
+  const historicalDate = new Date();
+  historicalDate.setDate(historicalDate.getDate() - daysAgo);
+  const dateStr = historicalDate.toISOString().split('T')[0].split('-').reverse().join('-');
+
+  const [token0Current, token1Current, token0Historical, token1Historical] = await Promise.all([
+    fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${token0Id}&vs_currencies=usd`),
+    fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${token1Id}&vs_currencies=usd`),
+    fetch(`https://api.coingecko.com/api/v3/coins/${token0Id}/history?date=${dateStr}`),
+    fetch(`https://api.coingecko.com/api/v3/coins/${token1Id}/history?date=${dateStr}`),
   ]);
 
-  if (!data0.prices || !data1.prices) {
-    throw new Error("Failed to fetch price data");
-  }
-
-  const initialPrice0 = data0.prices[0][1];
-  const initialPrice1 = data1.prices[0][1];
-  const finalPrice0 = data0.prices[data0.prices.length - 1][1];
-  const finalPrice1 = data1.prices[data1.prices.length - 1][1];
-
-  const initialRatio = initialPrice0 / initialPrice1;
-  const finalRatio = finalPrice0 / finalPrice1;
+  const [t0c, t1c, t0h, t1h] = await Promise.all([
+    token0Current.json(),
+    token1Current.json(),
+    token0Historical.json(),
+    token1Historical.json(),
+  ]);
 
   return {
-    initialRatio,
-    finalRatio,
-    prices: data0.prices.map((p: [number, number], i: number) => ({
-      timestamp: p[0],
-      ratio: p[1] / (data1.prices[i]?.[1] || data1.prices[data1.prices.length - 1][1]),
-    })),
+    token0: {
+      current: t0c[token0Id]?.usd || 0,
+      historical: t0h.market_data?.current_price?.usd || 0,
+    },
+    token1: {
+      current: t1c[token1Id]?.usd || 0,
+      historical: t1h.market_data?.current_price?.usd || 0,
+    },
   };
 }
 
-function estimateFeeAPR(dailyVolume: number, tvl: number, feeTier: number = 0.003): number {
-  if (tvl === 0) return 0;
-  const annualFees = dailyVolume * feeTier * 365;
-  return (annualFees / tvl) * 100;
-}
-
-function estimatePoolMetrics(token0: string, token1: string, depositValue: number) {
-  const poolTypes: Record<string, { volumeRatio: number; feeTier: number }> = {
-    stablecoin: { volumeRatio: 0.5, feeTier: 0.0005 },
-    eth_stablecoin: { volumeRatio: 1.2, feeTier: 0.003 },
-    eth_btc: { volumeRatio: 0.8, feeTier: 0.003 },
-    major_major: { volumeRatio: 0.6, feeTier: 0.003 },
-    major_stable: { volumeRatio: 0.7, feeTier: 0.003 },
-    default: { volumeRatio: 0.3, feeTier: 0.003 },
-  };
-
-  const stablecoins = ["USDC", "USDT", "DAI"];
-  const majorTokens = ["ETH", "WETH", "BTC", "WBTC", "MATIC", "LINK", "UNI", "AAVE"];
-  let poolType = "default";
-
-  if (stablecoins.includes(token0) && stablecoins.includes(token1)) poolType = "stablecoin";
-  else if ((["ETH", "WETH"].includes(token0) && stablecoins.includes(token1)) || 
-           (["ETH", "WETH"].includes(token1) && stablecoins.includes(token0))) poolType = "eth_stablecoin";
-  else if ((["ETH", "WETH"].includes(token0) && ["BTC", "WBTC"].includes(token1)) || 
-           (["ETH", "WETH"].includes(token1) && ["BTC", "WBTC"].includes(token0))) poolType = "eth_btc";
-  else if (majorTokens.includes(token0) && majorTokens.includes(token1)) poolType = "major_major";
-  else if ((majorTokens.includes(token0) && stablecoins.includes(token1)) || 
-           (majorTokens.includes(token1) && stablecoins.includes(token0))) poolType = "major_stable";
-
-  const { volumeRatio, feeTier } = poolTypes[poolType];
-  const estimatedTVL = depositValue * 1000;
-  const estimatedDailyVolume = estimatedTVL * volumeRatio;
-  return { estimatedTVL, estimatedDailyVolume, feeTier };
-}
-
-console.log("📦 Step 4: Adding calculate_il endpoint...");
-addEntrypoint({
-  key: "calculate_il",
-  description: "Calculate impermanent loss and fee APR for LP position with historical price data. Cost: $0.01 USDC via X402 on Base network.",
-  input: z.object({
-    pool_address: z.string().optional().describe("LP pool address (optional)"),
-    token0_symbol: z.string().describe("First token symbol (e.g., ETH, USDC)"),
-    token1_symbol: z.string().describe("Second token symbol (e.g., USDT, DAI)"),
-    token_weights: z.array(z.number()).length(2).default([0.5, 0.5]).describe("Token weight distribution (default 50/50)"),
-    deposit_amounts: z.array(z.number()).length(2).describe("Amount of each token in USD value"),
-    window_hours: z.number().default(168).describe("Historical window in hours (default 7 days)"),
-  }) as any,
-  async handler({ input }: { input: any }) {
-    try {
-      const { token0_symbol, token1_symbol, deposit_amounts, window_hours } = input;
-      const daysBack = Math.ceil(window_hours / 24);
-      const priceData = await fetchHistoricalPrices(token0_symbol, token1_symbol, daysBack);
-      const priceRatio = priceData.finalRatio / priceData.initialRatio;
-      const ilResult = calculateImpermanentLoss(priceRatio);
-      const totalDepositValue = deposit_amounts[0] + deposit_amounts[1];
-      const poolMetrics = estimatePoolMetrics(token0_symbol, token1_symbol, totalDepositValue);
-      const feeAPR = estimateFeeAPR(poolMetrics.estimatedDailyVolume, poolMetrics.estimatedTVL, poolMetrics.feeTier);
-      const ilAnnualized = ilResult.ilPercent * (365 / daysBack);
-      const netAPR = feeAPR + ilAnnualized;
-      
-      const notes = [];
-      if (Math.abs(ilResult.ilPercent) < 1) notes.push("Low impermanent loss - price ratio remained stable");
-      else if (Math.abs(ilResult.ilPercent) > 10) notes.push("⚠️ High impermanent loss - significant price divergence");
-      if (feeAPR > Math.abs(ilAnnualized)) notes.push("✅ Fee income exceeds annualized IL - profitable position");
-      else notes.push("⚠️ IL may exceed fee income - consider rebalancing");
-      notes.push(`Price ratio changed by ${((priceRatio - 1) * 100).toFixed(2)}% over the period`);
-      notes.push(`Pool type: ${token0_symbol}/${token1_symbol} with ${(poolMetrics.feeTier * 100).toFixed(2)}% fee tier`);
-      
-      const volumeWindow = poolMetrics.estimatedDailyVolume * daysBack;
-
-      return {
-        output: {
-          pricing_note: "This calculation costs $0.01 USDC (paid via X402 protocol on Base network)",
-          IL_percent: Number(ilResult.ilPercent.toFixed(4)),
-          fee_apr_est: Number(feeAPR.toFixed(2)),
-          net_apr_est: Number(netAPR.toFixed(2)),
-          volume_window: Number(volumeWindow.toFixed(2)),
-          price_change_percent: Number(((priceRatio - 1) * 100).toFixed(2)),
-          il_annualized_percent: Number(ilAnnualized.toFixed(2)),
-          estimated_tvl: Number(poolMetrics.estimatedTVL.toFixed(2)),
-          estimated_daily_volume: Number(poolMetrics.estimatedDailyVolume.toFixed(2)),
-          fee_tier_percent: Number((poolMetrics.feeTier * 100).toFixed(3)),
-          notes: notes,
-        },
-        usage: { total_tokens: JSON.stringify(input).length + JSON.stringify(notes).length },
-      };
-    } catch (error) {
-      return {
-        output: {
-          error: `Failed to calculate IL: ${error}`,
-          IL_percent: 0,
-          fee_apr_est: 0,
-          volume_window: 0,
-          notes: ["Error occurred during calculation"],
-        },
-        usage: { total_tokens: 100 },
-      };
-    }
-  },
-});
-console.log("✅ Step 4: calculate_il endpoint added");
-
-console.log("📦 Step 5: Adding echo endpoint...");
-addEntrypoint({
-  key: "echo",
-  description: "Echo a message back - useful for testing the API (FREE)",
-  input: z.object({ text: z.string().describe("Text to echo back") }) as any,
-  async handler({ input }: { input: any }) {
-    return {
-      output: { text: String(input.text ?? ""), timestamp: Date.now(), pricing: "FREE" },
-      usage: { total_tokens: String(input.text ?? "").length },
-    };
-  },
-});
-console.log("✅ Step 5: echo endpoint added");
-
-// CRITICAL: Add GET handler for Railway healthcheck
-import { Hono } from "hono";
-const honoApp = app as unknown as Hono;
-honoApp.get('/health', (c) => {
-  return c.json({ 
-    status: 'healthy', 
-    timestamp: Date.now(),
-    method: 'GET' 
-  });
-});
-console.log("✅ Added GET /health for Railway");
-
-console.log("📦 Step 6: Configuring server...");
-const port = Number(process.env.PORT) || 3000;
-const hostname = "0.0.0.0";
-
-console.log("==============================================");
-console.log("🚀 LP Impermanent Loss Estimator");
-console.log("==============================================");
-console.log(`📊 Port: ${port}`);
-console.log(`🌐 Hostname: ${hostname}`);
-console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || '0xe7A413d4192fdee1bB5ecdF9D07A1827Eb15Bc1F'}`);
-console.log(`🔧 Node Environment: ${process.env.NODE_ENV || 'development'}`);
-console.log(`📍 Working Directory: ${process.cwd()}`);
-console.log(`🔢 Node Version: ${process.version}`);
-console.log("----------------------------------------------");
-console.log("💵 Pricing:");
-console.log("   /health - FREE");
-console.log("   /echo - FREE");
-console.log("   /calculate_il - $0.01 USDC per call (Base network)");
-console.log("----------------------------------------------");
-console.log("⏳ Starting server...");
-console.log("📦 Step 7: Calling serve() function...");
-
-// IMPORTANT: Wrap in try-catch and add error logging
-try {
-  const server = serve(
-    { fetch: app.fetch, port, hostname },
-    (info) => {
-      console.log("🎉 SUCCESS! SERVER IS NOW LISTENING!");
-      console.log("✅ SERVER IS READY AND LISTENING");
-      console.log(`🌍 Server URL: http://${hostname}:${info.port}`);
-      console.log("----------------------------------------------");
-      console.log("📡 Available Endpoints:");
-      console.log("   GET  /health - Health check (Railway)");
-      console.log("   POST /health - Health check (POST)");
-      console.log("   POST /calculate_il - Calculate IL ($0.01 USDC)");
-      console.log("   POST /echo - Echo test (FREE)");
-      console.log("==============================================");
-    }
-  );
+// Calculate IL using constant product formula (x * y = k)
+function calculateImpermanentLoss(position: PoolPosition, prices: {
+  token0: TokenPriceData;
+  token1: TokenPriceData;
+}): ILCalculation {
+  console.log('[IL_CALC] Calculating impermanent loss...');
   
-  console.log("✅ Step 7: serve() function called successfully");
-  console.log("⏳ Waiting for server to bind to port...");
-
-  // Keep process alive
-  const keepAlive = setInterval(() => {
-    console.log(`⏰ Uptime: ${Math.floor(process.uptime())}s`);
-  }, 60000);
-
-  // Graceful shutdown
-  let shuttingDown = false;
-  const shutdown = (signal: string) => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    console.log(`\n⏸️ ${signal} received - shutting down gracefully...`);
-    clearInterval(keepAlive);
-    server.close(() => {
-      console.log("✅ Server closed");
-      process.exit(0);
-    });
-    setTimeout(() => process.exit(1), 10000);
-  };
-
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+  const { token0Amount, token1Amount, daysHeld } = position;
   
-  process.on("uncaughtException", (err) => {
-    console.error("💥 UNCAUGHT EXCEPTION:");
-    console.error(err);
-    console.error("Stack:", err.stack);
-    shutdown("EXCEPTION");
-  });
-  
-  process.on("unhandledRejection", (reason, promise) => {
-    console.error("💥 UNHANDLED REJECTION:");
-    console.error("Reason:", reason);
-    console.error("Promise:", promise);
-    // Don't exit on unhandled rejection in agent-kit
-  });
+  // Price change ratios
+  const priceRatio = prices.token0.current / prices.token1.current;
+  const entryRatio = prices.token0.historical / prices.token1.historical;
+  const priceChangeRatio = priceRatio / entryRatio;
 
-  console.log("✅ All error handlers registered");
+  // Initial portfolio value
+  const initialValue = 
+    token0Amount * prices.token0.historical + 
+    token1Amount * prices.token1.historical;
 
-} catch (error) {
-  console.error("❌ FATAL ERROR STARTING SERVER:");
-  console.error(error);
-  if (error instanceof Error) {
-    console.error("Stack:", error.stack);
+  // HODL value (if held outside pool)
+  const hodlValue = 
+    token0Amount * prices.token0.current + 
+    token1Amount * prices.token1.current;
+
+  // Current pool value with IL effect
+  // Using formula: V_pool = 2 * sqrt(k * P) where k = x * y, P = price ratio
+  const k = token0Amount * token1Amount;
+  const currentPoolValue = 2 * Math.sqrt(k * priceRatio) * prices.token1.current;
+
+  // Impermanent Loss
+  const impermanentLoss = currentPoolValue - hodlValue;
+  const impermanentLossPercent = (impermanentLoss / hodlValue) * 100;
+
+  // Estimate fee APR based on pool characteristics
+  // Volatile pairs (BTC/ETH) ~= 0.3% fees → 20-40% APR
+  // Stable pairs (USDC/USDT) ~= 0.01% fees → 2-5% APR
+  const isStablePair = 
+    ['USDC', 'USDT', 'DAI'].includes(position.token0Symbol.toUpperCase()) &&
+    ['USDC', 'USDT', 'DAI'].includes(position.token1Symbol.toUpperCase());
+  const estimatedFeeAPR = isStablePair ? 0.03 : 0.30; // 3% or 30%
+
+  // Fees earned = (APR * initial value * days held) / 365
+  const estimatedFeesEarned = (estimatedFeeAPR * initialValue * daysHeld) / 365;
+
+  // Net P&L
+  const netProfitLoss = impermanentLoss + estimatedFeesEarned;
+  const netProfitLossPercent = (netProfitLoss / initialValue) * 100;
+
+  // Recommendation logic
+  let recommendation = '';
+  if (impermanentLossPercent > -2 && estimatedFeesEarned > Math.abs(impermanentLoss)) {
+    recommendation = '✅ Fees are covering IL well. Position looks healthy.';
+  } else if (impermanentLossPercent < -10) {
+    recommendation = '⚠️ Significant IL detected. Consider rebalancing if fees don\'t compensate.';
+  } else {
+    recommendation = '📊 Monitor closely. IL is moderate relative to fee earnings.';
   }
-  process.exit(1);
+
+  return {
+    token0Symbol: position.token0Symbol,
+    token1Symbol: position.token1Symbol,
+    initialValue,
+    currentValue: currentPoolValue,
+    hodlValue,
+    impermanentLoss,
+    impermanentLossPercent,
+    estimatedFeeAPR: estimatedFeeAPR * 100, // Convert to percentage
+    estimatedFeesEarned,
+    netProfitLoss,
+    netProfitLossPercent,
+    recommendation,
+    priceChange: {
+      token0: ((prices.token0.current - prices.token0.historical) / prices.token0.historical) * 100,
+      token1: ((prices.token1.current - prices.token1.historical) / prices.token1.historical) * 100,
+      ratio: (priceChangeRatio - 1) * 100,
+    },
+  };
 }
 
-export default app;
+console.log('[STARTUP] Helper functions ready ✓');
+
+// ============================================
+// STEP 3: Create Agent App
+// ============================================
+console.log('[STARTUP] Step 3: Creating agent app...');
+
+const app = createAgentApp({
+  name: 'LP Impermanent Loss Estimator',
+  description: 'Calculate impermanent loss and fee APR for liquidity provider positions using real historical price data',
+  version: '1.0.0',
+  author: 'DeganAI',
+  paymentsConfig: FACILITATOR_URL && WALLET_ADDRESS ? {
+    facilitatorUrl: FACILITATOR_URL,
+    address: WALLET_ADDRESS as `0x${string}`,
+    network: NETWORK,
+    defaultPrice: DEFAULT_PRICE,
+  } : undefined,
+});
+
+console.log('[STARTUP] Agent app created ✓');
+
+// ============================================
+// STEP 4: Define Entrypoints
+// ============================================
+console.log('[STARTUP] Step 4: Defining entrypoints...');
+
+// Health check endpoint
+app.get('/health', (c) => {
+  console.log('[HEALTH] Health check requested');
+  return c.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    service: 'LP Impermanent Loss Estimator',
+    version: '1.0.0'
+  });
+});
+
+// Main IL calculation entrypoint
+app.addEntrypoint({
+  key: 'calculate-il',
+  name: 'Calculate Impermanent Loss',
+  description: 'Calculates impermanent loss and fee APR for a liquidity provider position using historical price data from CoinGecko',
+  price: '$0.10',
+  input: z.object({
+    token0Symbol: z.string().describe('First token symbol (e.g., ETH, BTC, USDC)'),
+    token1Symbol: z.string().describe('Second token symbol (e.g., USDC, USDT, DAI)'),
+    token0Amount: z.number().positive().describe('Amount of first token in the pool'),
+    token1Amount: z.number().positive().describe('Amount of second token in the pool'),
+    daysHeld: z.number().positive().describe('Number of days the position has been held'),
+  }),
+  output: z.object({
+    token0Symbol: z.string(),
+    token1Symbol: z.string(),
+    initialValue: z.number(),
+    currentValue: z.number(),
+    hodlValue: z.number(),
+    impermanentLoss: z.number(),
+    impermanentLossPercent: z.number(),
+    estimatedFeeAPR: z.number(),
+    estimatedFeesEarned: z.number(),
+    netProfitLoss: z.number(),
+    netProfitLossPercent: z.number(),
+    recommendation: z.string(),
+    priceChange: z.object({
+      token0: z.number(),
+      token1: z.number(),
+      ratio: z.number(),
+    }),
+  }),
+  handler: async (ctx) => {
+    console.log('[HANDLER] calculate-il called');
+    const input = ctx.req.valid('json');
+    
+    const position: PoolPosition = {
+      ...input,
+      entryPriceRatio: 1, // We'll derive this from historical prices
+    };
+
+    const prices = await fetchTokenPrices(
+      input.token0Symbol,
+      input.token1Symbol,
+      input.daysHeld
+    );
+
+    const result = calculateImpermanentLoss(position, prices);
+    console.log('[HANDLER] Calculation complete:', result);
+    
+    return ctx.json(result);
+  },
+});
+
+console.log('[STARTUP] Entrypoints defined ✓');
+
+// ============================================
+// STEP 5: Start Server (Node.js compatible)
+// ============================================
+console.log('[STARTUP] Step 5: Starting server with Node.js...');
+
+import { serve } from '@hono/node-server';
+
+const server = serve({
+  fetch: app.fetch,
+  port: PORT,
+  hostname: HOST,
+}, (info) => {
+  console.log(`[SUCCESS] ✓ Server running at http://${info.address}:${info.port}`);
+  console.log(`[SUCCESS] ✓ Health check: http://${info.address}:${info.port}/health`);
+  console.log(`[SUCCESS] ✓ Entrypoints: http://${info.address}:${info.port}/entrypoints`);
+  console.log('[SUCCESS] ===== READY TO ACCEPT REQUESTS =====');
+});
+
+// Keep-alive to prevent process from exiting
+const keepAlive = setInterval(() => {
+  console.log('[KEEPALIVE] Server is running...');
+}, 30000); // Log every 30 seconds
+
+// ============================================
+// STEP 6: Graceful Shutdown
+// ============================================
+const shutdown = () => {
+  console.log('[SHUTDOWN] Received shutdown signal');
+  clearInterval(keepAlive);
+  server.close(() => {
+    console.log('[SHUTDOWN] Server stopped gracefully');
+    process.exit(0);
+  });
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
