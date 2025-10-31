@@ -1,3 +1,10 @@
+// Crypto polyfill for Node.js environments (if needed)
+import { webcrypto } from 'node:crypto';
+if (!globalThis.crypto) {
+  // @ts-ignore
+  globalThis.crypto = webcrypto;
+}
+
 console.log("📦 Step 1: Starting imports...");
 import { z } from "zod";
 console.log("✅ Step 1a: zod imported");
@@ -11,6 +18,10 @@ const { app, addEntrypoint } = createAgentApp({
   name: "lp-impermanent-loss-estimator",
   version: "0.1.0",
   description: "Calculate IL and fee APR for any LP position or simulated deposit",
+  payment: {
+    address: process.env.X402_PAYMENT_ADDRESS || "0xe7A413d4192fdee1bB5ecdF9D07A1827Eb15Bc1F",
+    network: "base", // Using Base network for low fees
+  },
 });
 console.log("✅ Step 2: Agent app created");
 
@@ -28,18 +39,22 @@ function calculateImpermanentLoss(
   return { ilPercent, hodlValue, lpValue };
 }
 
-// Add health check endpoint
+// Add health check endpoint - FREE
 console.log("📦 Step 3: Adding health endpoint...");
 addEntrypoint({
   key: "health",
-  description: "Health check endpoint",
+  description: "Health check endpoint - verify service is running",
+  pricing: {
+    type: "free",
+  },
   input: z.object({}).optional() as any,
   async handler() {
     return {
       output: { 
         status: "healthy",
         timestamp: Date.now(),
-        version: "0.1.0"
+        version: "0.1.0",
+        uptime: process.uptime(),
       },
       usage: { total_tokens: 10 },
     };
@@ -187,7 +202,12 @@ function estimatePoolMetrics(
 console.log("📦 Step 4: Adding calculate_il endpoint...");
 addEntrypoint({
   key: "calculate_il",
-  description: "Calculate impermanent loss and fee APR for LP position",
+  description: "Calculate impermanent loss and fee APR for LP position with historical price data from CoinGecko",
+  pricing: {
+    type: "per_call",
+    amount: 0.01, // $0.01 per calculation (1 cent in USDC)
+    currency: "USDC",
+  },
   input: z.object({
     pool_address: z.string().optional().describe("LP pool address (optional for simulation)"),
     token0_symbol: z.string().describe("First token symbol (e.g., ETH, USDC)"),
@@ -306,15 +326,23 @@ addEntrypoint({
 });
 console.log("✅ Step 4: calculate_il endpoint added");
 
-// Simple echo endpoint for testing
+// Simple echo endpoint for testing - FREE
 console.log("📦 Step 5: Adding echo endpoint...");
 addEntrypoint({
   key: "echo",
-  description: "Echo a message",
-  input: z.object({ text: z.string() }) as any,
+  description: "Echo a message back - useful for testing the API",
+  pricing: {
+    type: "free",
+  },
+  input: z.object({ 
+    text: z.string().describe("Text to echo back") 
+  }) as any,
   async handler({ input }: { input: any }) {
     return {
-      output: { text: String(input.text ?? "") },
+      output: { 
+        text: String(input.text ?? ""),
+        timestamp: Date.now(),
+      },
       usage: { total_tokens: String(input.text ?? "").length },
     };
   },
@@ -331,7 +359,7 @@ console.log("🚀 LP Impermanent Loss Estimator");
 console.log("==============================================");
 console.log(`📊 Port: ${port}`);
 console.log(`🌐 Hostname: ${hostname}`);
-console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || 'Not configured'}`);
+console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || '0xe7A413d4192fdee1bB5ecdF9D07A1827Eb15Bc1F'}`);
 console.log(`🔧 Node Environment: ${process.env.NODE_ENV || 'development'}`);
 console.log(`📍 Working Directory: ${process.cwd()}`);
 console.log(`🔢 Node Version: ${process.version}`);
@@ -354,9 +382,14 @@ try {
       console.log(`🌍 Server URL: http://${hostname}:${info.port}`);
       console.log("----------------------------------------------");
       console.log("📡 Available Endpoints:");
-      console.log("   POST /health - Health check");
-      console.log("   POST /calculate_il - Calculate impermanent loss");
-      console.log("   POST /echo - Echo test");
+      console.log("   POST /health - Health check (FREE)");
+      console.log("   POST /calculate_il - Calculate impermanent loss ($0.01 per call)");
+      console.log("   POST /echo - Echo test (FREE)");
+      console.log("----------------------------------------------");
+      console.log("💵 Pricing:");
+      console.log("   Health Check: FREE");
+      console.log("   Calculate IL: $0.01 USDC per calculation");
+      console.log("   Echo: FREE");
       console.log("==============================================");
     }
   );
