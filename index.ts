@@ -17,11 +17,7 @@ console.log("📦 Step 2: Creating agent app...");
 const { app, addEntrypoint } = createAgentApp({
   name: "lp-impermanent-loss-estimator",
   version: "0.1.0",
-  description: "Calculate IL and fee APR for any LP position or simulated deposit",
-  payment: {
-    address: process.env.X402_PAYMENT_ADDRESS || "0xe7A413d4192fdee1bB5ecdF9D07A1827Eb15Bc1F",
-    network: "base", // Using Base network for low fees
-  },
+  description: "Calculate IL and fee APR for any LP position or simulated deposit. Pricing: FREE for health/echo, $0.01 USDC per IL calculation.",
 });
 console.log("✅ Step 2: Agent app created");
 
@@ -43,10 +39,7 @@ function calculateImpermanentLoss(
 console.log("📦 Step 3: Adding health endpoint...");
 addEntrypoint({
   key: "health",
-  description: "Health check endpoint - verify service is running",
-  pricing: {
-    type: "free",
-  },
+  description: "Health check endpoint - verify service is running (FREE)",
   input: z.object({}).optional() as any,
   async handler() {
     return {
@@ -55,6 +48,7 @@ addEntrypoint({
         timestamp: Date.now(),
         version: "0.1.0",
         uptime: process.uptime(),
+        pricing: "FREE"
       },
       usage: { total_tokens: 10 },
     };
@@ -202,14 +196,9 @@ function estimatePoolMetrics(
 console.log("📦 Step 4: Adding calculate_il endpoint...");
 addEntrypoint({
   key: "calculate_il",
-  description: "Calculate impermanent loss and fee APR for LP position with historical price data from CoinGecko",
-  pricing: {
-    type: "per_call",
-    amount: 0.01, // $0.01 per calculation (1 cent in USDC)
-    currency: "USDC",
-  },
+  description: "Calculate impermanent loss and fee APR for LP position with historical price data. Cost: $0.01 USDC via X402 on Base network.",
   input: z.object({
-    pool_address: z.string().optional().describe("LP pool address (optional for simulation)"),
+    pool_address: z.string().optional().describe("LP pool address (optional)"),
     token0_symbol: z.string().describe("First token symbol (e.g., ETH, USDC)"),
     token1_symbol: z.string().describe("Second token symbol (e.g., USDT, DAI)"),
     token_weights: z
@@ -228,73 +217,39 @@ addEntrypoint({
       const {
         token0_symbol,
         token1_symbol,
-        token_weights,
         deposit_amounts,
         window_hours,
       } = input;
 
-      // Convert hours to days
       const daysBack = Math.ceil(window_hours / 24);
-
-      // Fetch historical price data
       const priceData = await fetchHistoricalPrices(token0_symbol, token1_symbol, daysBack);
-
-      // Calculate price ratio change
       const priceRatio = priceData.finalRatio / priceData.initialRatio;
-
-      // Calculate impermanent loss
       const ilResult = calculateImpermanentLoss(priceRatio);
-
-      // Calculate total deposit value
       const totalDepositValue = deposit_amounts[0] + deposit_amounts[1];
-
-      // Estimate pool metrics
-      const poolMetrics = estimatePoolMetrics(
-        token0_symbol,
-        token1_symbol,
-        totalDepositValue
-      );
-
-      // Calculate fee APR
-      const feeAPR = estimateFeeAPR(
-        poolMetrics.estimatedDailyVolume,
-        poolMetrics.estimatedTVL,
-        poolMetrics.feeTier
-      );
-
-      // Calculate net APR (fee APR can offset IL)
+      const poolMetrics = estimatePoolMetrics(token0_symbol, token1_symbol, totalDepositValue);
+      const feeAPR = estimateFeeAPR(poolMetrics.estimatedDailyVolume, poolMetrics.estimatedTVL, poolMetrics.feeTier);
       const ilAnnualized = ilResult.ilPercent * (365 / daysBack);
       const netAPR = feeAPR + ilAnnualized;
 
-      // Generate notes
       const notes = [];
-
       if (Math.abs(ilResult.ilPercent) < 1) {
         notes.push("Low impermanent loss - price ratio remained stable");
       } else if (Math.abs(ilResult.ilPercent) > 10) {
-        notes.push(
-          "⚠️ High impermanent loss - significant price divergence detected"
-        );
+        notes.push("⚠️ High impermanent loss - significant price divergence detected");
       }
-
       if (feeAPR > Math.abs(ilAnnualized)) {
         notes.push("✅ Fee income exceeds annualized IL - profitable position");
       } else {
         notes.push("⚠️ IL may exceed fee income - consider rebalancing");
       }
+      notes.push(`Price ratio changed by ${((priceRatio - 1) * 100).toFixed(2)}% over the period`);
+      notes.push(`Pool type: ${token0_symbol}/${token1_symbol} with ${(poolMetrics.feeTier * 100).toFixed(2)}% fee tier`);
 
-      notes.push(
-        `Price ratio changed by ${((priceRatio - 1) * 100).toFixed(2)}% over the period`
-      );
-      notes.push(
-        `Pool type: ${token0_symbol}/${token1_symbol} with ${(poolMetrics.feeTier * 100).toFixed(2)}% fee tier`
-      );
-
-      // Calculate volume in window
       const volumeWindow = poolMetrics.estimatedDailyVolume * daysBack;
 
       return {
         output: {
+          pricing_note: "This calculation costs $0.01 USDC (paid via X402 protocol on Base network)",
           IL_percent: Number(ilResult.ilPercent.toFixed(4)),
           fee_apr_est: Number(feeAPR.toFixed(2)),
           net_apr_est: Number(netAPR.toFixed(2)),
@@ -306,9 +261,7 @@ addEntrypoint({
           fee_tier_percent: Number((poolMetrics.feeTier * 100).toFixed(3)),
           notes: notes,
         },
-        usage: {
-          total_tokens: JSON.stringify(input).length + JSON.stringify(notes).length,
-        },
+        usage: { total_tokens: JSON.stringify(input).length + JSON.stringify(notes).length },
       };
     } catch (error) {
       return {
@@ -330,19 +283,11 @@ console.log("✅ Step 4: calculate_il endpoint added");
 console.log("📦 Step 5: Adding echo endpoint...");
 addEntrypoint({
   key: "echo",
-  description: "Echo a message back - useful for testing the API",
-  pricing: {
-    type: "free",
-  },
-  input: z.object({ 
-    text: z.string().describe("Text to echo back") 
-  }) as any,
+  description: "Echo a message back - useful for testing the API (FREE)",
+  input: z.object({ text: z.string().describe("Text to echo back") }) as any,
   async handler({ input }: { input: any }) {
     return {
-      output: { 
-        text: String(input.text ?? ""),
-        timestamp: Date.now(),
-      },
+      output: { text: String(input.text ?? ""), timestamp: Date.now(), pricing: "FREE" },
       usage: { total_tokens: String(input.text ?? "").length },
     };
   },
@@ -350,7 +295,6 @@ addEntrypoint({
 console.log("✅ Step 5: echo endpoint added");
 
 console.log("📦 Step 6: Configuring server...");
-// Start the HTTP server using @hono/node-server
 const port = Number(process.env.PORT) || 3000;
 const hostname = "0.0.0.0";
 
@@ -364,39 +308,32 @@ console.log(`🔧 Node Environment: ${process.env.NODE_ENV || 'development'}`);
 console.log(`📍 Working Directory: ${process.cwd()}`);
 console.log(`🔢 Node Version: ${process.version}`);
 console.log("----------------------------------------------");
+console.log("💵 Pricing:");
+console.log("   /health - FREE");
+console.log("   /echo - FREE");
+console.log("   /calculate_il - $0.01 USDC per call (Base network)");
+console.log("----------------------------------------------");
 console.log("⏳ Starting server...");
 console.log("📦 Step 7: Calling serve() function...");
 
 try {
-  // Start server - this is synchronous but the listening happens async
   const server = serve(
-    {
-      fetch: app.fetch,
-      port: port,
-      hostname: hostname,
-    },
+    { fetch: app.fetch, port: port, hostname: hostname },
     (info) => {
-      // This callback fires when server is actually listening
       console.log("🎉🎉🎉 SUCCESS! SERVER IS NOW LISTENING! 🎉🎉🎉");
       console.log("✅ SERVER IS READY AND LISTENING");
       console.log(`🌍 Server URL: http://${hostname}:${info.port}`);
       console.log("----------------------------------------------");
       console.log("📡 Available Endpoints:");
       console.log("   POST /health - Health check (FREE)");
-      console.log("   POST /calculate_il - Calculate impermanent loss ($0.01 per call)");
+      console.log("   POST /calculate_il - Calculate IL ($0.01 USDC)");
       console.log("   POST /echo - Echo test (FREE)");
-      console.log("----------------------------------------------");
-      console.log("💵 Pricing:");
-      console.log("   Health Check: FREE");
-      console.log("   Calculate IL: $0.01 USDC per calculation");
-      console.log("   Echo: FREE");
       console.log("==============================================");
     }
   );
   console.log("✅ Step 7: serve() function called successfully");
   console.log("⏳ Waiting for server to bind to port...");
 
-  // Graceful shutdown handlers
   process.on("SIGTERM", () => {
     console.log("\n⏸️  SIGTERM received, shutting down gracefully...");
     server.close(() => {
@@ -412,7 +349,6 @@ try {
       process.exit(0);
     });
   });
-
 } catch (error) {
   console.error("❌ FATAL ERROR STARTING SERVER:");
   console.error(error);
