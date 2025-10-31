@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { createAgentApp } from "@lucid-dreams/agent-kit";
-import { createServer } from "node:http";
-import { toNodeListener } from "@hono/node-server";
+import { serve } from "@hono/node-server";
 
 const { app, addEntrypoint } = createAgentApp({
   name: "lp-impermanent-loss-estimator",
@@ -310,45 +309,42 @@ addEntrypoint({
   },
 });
 
-// Start the HTTP server using Node's native http module with Hono adapter
+// Start the HTTP server using @hono/node-server
 const port = Number(process.env.PORT) || 3000;
 
 console.log("🚀 Starting LP Impermanent Loss Estimator...");
 console.log(`📊 Port: ${port}`);
 console.log(`💰 Payment Address: ${process.env.X402_PAYMENT_ADDRESS || 'Not configured'}`);
 
-// Create HTTP server with Hono adapter
-const server = createServer(toNodeListener(app));
-
-server.listen(port, "0.0.0.0", () => {
-  console.log(`✅ Server running on http://0.0.0.0:${port}`);
-  console.log("📡 Endpoints:");
-  console.log("   POST /health - Health check");
-  console.log("   POST /calculate_il - Calculate impermanent loss");
-  console.log("   POST /echo - Echo test");
+// Start server and keep reference
+const server = serve({
+  fetch: app.fetch,
+  port: port,
+  hostname: "0.0.0.0",
 });
 
-// Handle shutdown gracefully
+console.log(`✅ Server running on http://0.0.0.0:${port}`);
+console.log("📡 Endpoints:");
+console.log("   POST /health - Health check");
+console.log("   POST /calculate_il - Calculate impermanent loss");
+console.log("   POST /echo - Echo test");
+
+// Keepalive interval to prevent process exit
+const keepalive = setInterval(() => {
+  // This ensures Node.js event loop stays active
+}, 60000);
+
+// Keep process alive
 process.on("SIGTERM", () => {
   console.log("⏸️  SIGTERM received, shutting down gracefully...");
-  server.close(() => {
-    console.log("✅ Server closed");
-    process.exit(0);
-  });
+  clearInterval(keepalive);
+  process.exit(0);
 });
 
 process.on("SIGINT", () => {
   console.log("⏸️  SIGINT received, shutting down gracefully...");
-  server.close(() => {
-    console.log("✅ Server closed");
-    process.exit(0);
-  });
-});
-
-// Handle errors
-server.on("error", (error) => {
-  console.error("❌ Server error:", error);
-  process.exit(1);
+  clearInterval(keepalive);
+  process.exit(0);
 });
 
 export default app;
