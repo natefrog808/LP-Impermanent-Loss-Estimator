@@ -221,7 +221,7 @@ honoApp.get('/health', (c) => {
   });
 });
 
-// Manual 402 handler for x402scan compatibility - MUST come before agent-kit entrypoint
+// Manual 402 handler for x402scan compatibility
 honoApp.post('/entrypoints/calculate-il', async (c) => {
   const paymentHeader = c.req.header('X-PAYMENT');
   
@@ -338,6 +338,40 @@ honoApp.post('/entrypoints/calculate-il', async (c) => {
     console.error('[ERROR] Calculation failed:', error);
     return c.json({ error: error.message }, 500);
   }
+});
+
+// Also add agent-kit entrypoint for discovery
+app.addEntrypoint({
+  key: 'calculate-il',
+  name: 'Calculate Impermanent Loss',
+  description: 'Calculates impermanent loss and fee APR for liquidity provider position using historical price data from CoinGecko',
+  price: '$0.10',
+  handler: async (ctx) => {
+    console.log('[AGENT-KIT] calculate-il called via agent-kit');
+    
+    const input = ctx.input as {
+      token0Symbol: string;
+      token1Symbol: string;
+      token0Amount: number;
+      token1Amount: number;
+      daysHeld: number;
+    };
+    
+    const position: PoolPosition = {
+      ...input,
+      entryPriceRatio: 1,
+    };
+
+    const prices = await fetchTokenPrices(
+      input.token0Symbol,
+      input.token1Symbol,
+      input.daysHeld
+    );
+
+    const result = calculateImpermanentLoss(position, prices);
+    
+    return result;
+  },
 });
 
 console.log('[STARTUP] Entrypoints defined ✓');
