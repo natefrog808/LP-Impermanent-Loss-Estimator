@@ -310,44 +310,34 @@ honoApp.post('/entrypoints/calculate-il', async (c) => {
     }, 402);
   }
   
-  // If payment exists, let agent-kit handle it
-  // Just return next() or continue
-  console.log('[PAYMENT] Payment header detected, processing...');
-});
-
-// Main calculation entrypoint
-app.addEntrypoint({
-  key: 'calculate-il',
-  name: 'Calculate Impermanent Loss',
-  description: 'Calculates impermanent loss and fee APR for a liquidity provider position using historical price data from CoinGecko',
-  price: '$0.10',
-  handler: async (ctx) => {
-    console.log('[HANDLER] calculate-il called');
-    
-    const input = ctx.input as {
-      token0Symbol: string;
-      token1Symbol: string;
-      token0Amount: number;
-      token1Amount: number;
-      daysHeld: number;
-    };
+  // Process calculation with payment
+  try {
+    console.log('[HANDLER] calculate-il called with payment');
+    const body = await c.req.json();
     
     const position: PoolPosition = {
-      ...input,
+      token0Symbol: body.token0Symbol,
+      token1Symbol: body.token1Symbol,
+      token0Amount: body.token0Amount,
+      token1Amount: body.token1Amount,
+      daysHeld: body.daysHeld,
       entryPriceRatio: 1,
     };
 
     const prices = await fetchTokenPrices(
-      input.token0Symbol,
-      input.token1Symbol,
-      input.daysHeld
+      body.token0Symbol,
+      body.token1Symbol,
+      body.daysHeld
     );
 
     const result = calculateImpermanentLoss(position, prices);
     console.log('[HANDLER] Calculation complete');
     
-    return result;
-  },
+    return c.json(result);
+  } catch (error: any) {
+    console.error('[ERROR] Calculation failed:', error);
+    return c.json({ error: error.message }, 500);
+  }
 });
 
 console.log('[STARTUP] Entrypoints defined ✓');
