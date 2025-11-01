@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun run index.ts",
-    "start": "node --import tsx index.ts"
+    "start": "tsx index.ts"
   },
   "dependencies": {
     "@lucid-dreams/agent-kit": "^0.2.22",
