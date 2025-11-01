@@ -2,7 +2,7 @@
 
 An AI agent that calculates impermanent loss and fee APR for liquidity provider positions using real historical price data from CoinGecko.
 
-**🌐 Live Demo:** `https://lp-impermanent-loss-estimator-production.up.railway.app`
+**🌐 Live Demo:** https://lp-impermanent-loss-estimator-production.up.railway.app/
 
 **💳 x402 Endpoint:** `https://lp-impermanent-loss-estimator-production.up.railway.app/calculate-il-x402`
 
