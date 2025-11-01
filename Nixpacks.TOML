@@ -1,8 +1,5 @@
 [phases.setup]
-nixPkgs = ['bun']
-
-[phases.install]
-cmds = ['bun install']
+nixPkgs = ['nodejs-20_x', 'npm-9_x']
 
 [start]
-cmd = 'bun run index.ts'
+cmd = 'npm start'
