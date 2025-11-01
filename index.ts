@@ -1,5 +1,4 @@
-import { Hono } from 'hono';
-import { serve } from '@hono/node-server';
+import { createAgentApp } from '@lucid-dreams/agent-kit';
 
 // ============================================
 // STEP 1: Environment & Configuration
@@ -9,11 +8,18 @@ console.log('[STARTUP] Step 1: Loading environment variables...');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = '0.0.0.0';
-const WALLET_ADDRESS = '0xe7A413d4192fdee1bB5ecdF9D07A1827Eb15Bc1F';
+const FACILITATOR_URL = process.env.FACILITATOR_URL || 'https://facilitator.cdp.coinbase.com';
+const WALLET_ADDRESS = process.env.ADDRESS || '0xe7A413d4192fdee1bB5ecdF9D07A1827Eb15Bc1F';
+const NETWORK = process.env.NETWORK || 'base';
+const DEFAULT_PRICE = process.env.DEFAULT_PRICE || '$0.10';
 
+console.log('[CONFIG] Runtime: Bun');
 console.log('[CONFIG] Port:', PORT);
 console.log('[CONFIG] Host:', HOST);
-console.log('[CONFIG] Wallet:', WALLET_ADDRESS);
+console.log('[CONFIG] Facilitator URL:', FACILITATOR_URL ? 'Set ✓' : 'Not set ✗');
+console.log('[CONFIG] Wallet Address:', WALLET_ADDRESS ? 'Set ✓' : 'Not set ✗');
+console.log('[CONFIG] Network:', NETWORK);
+console.log('[CONFIG] Default Price:', DEFAULT_PRICE);
 
 // ============================================
 // STEP 2: Helper Functions
@@ -177,199 +183,108 @@ function calculateImpermanentLoss(position: PoolPosition, prices: {
 console.log('[STARTUP] Helper functions ready ✓');
 
 // ============================================
-// STEP 3: Create Hono App
+// STEP 3: Create Agent App
 // ============================================
-console.log('[STARTUP] Step 3: Creating Hono app...');
+console.log('[STARTUP] Step 3: Creating agent app...');
 
-const app = new Hono();
+const app = createAgentApp({
+  name: 'LP Impermanent Loss Estimator',
+  description: 'Calculate impermanent loss and fee APR for liquidity provider positions using real historical price data',
+  version: '1.0.0',
+  paymentsConfig: {
+    facilitatorUrl: FACILITATOR_URL,
+    address: WALLET_ADDRESS as `0x${string}`,
+    network: NETWORK,
+    defaultPrice: DEFAULT_PRICE,
+  },
+});
 
-console.log('[STARTUP] Hono app created ✓');
+console.log('[STARTUP] Agent app created ✓');
+
+// Access the underlying Hono app
+const honoApp = app.app;
 
 // ============================================
-// STEP 4: Define Routes
+// STEP 4: Define Entrypoints
 // ============================================
-console.log('[STARTUP] Step 4: Defining routes...');
+console.log('[STARTUP] Step 4: Defining entrypoints...');
 
 // Health check
-app.get('/health', (c) => {
+honoApp.get('/health', (c) => {
   console.log('[HEALTH] Health check requested');
   return c.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
     service: 'LP Impermanent Loss Estimator',
-    version: '1.0.0'
+    version: '1.0.0',
+    runtime: 'Bun'
   });
 });
 
-// x402scan-compliant endpoint
-app.post('/calculate-il', async (c) => {
-  const paymentHeader = c.req.header('X-PAYMENT');
-  
-  if (!paymentHeader) {
-    // Return 402 with x402scan-compliant schema
-    console.log('[402] Returning payment required response');
-    return c.json({
-      x402Version: 1,
-      accepts: [{
-        scheme: "exact",
-        network: "base",
-        maxAmountRequired: "100000",
-        resource: "/calculate-il",
-        description: "Calculate impermanent loss and fee APR for liquidity provider positions using historical price data",
-        mimeType: "application/json",
-        payTo: "0xe7A413d4192fdee1bB5ecdF9D07A1827Eb15Bc1F",
-        maxTimeoutSeconds: 300,
-        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-        outputSchema: {
-          input: {
-            type: "http",
-            method: "POST",
-            bodyType: "json",
-            bodyFields: {
-              token0Symbol: {
-                type: "string",
-                required: true,
-                description: "First token symbol (e.g., ETH, BTC, USDC)",
-                enum: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"]
-              },
-              token1Symbol: {
-                type: "string",
-                required: true,
-                description: "Second token symbol (e.g., USDC, USDT, DAI)",
-                enum: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"]
-              },
-              token0Amount: {
-                type: "number",
-                required: true,
-                description: "Amount of first token in the pool"
-              },
-              token1Amount: {
-                type: "number",
-                required: true,
-                description: "Amount of second token in the pool"
-              },
-              daysHeld: {
-                type: "number",
-                required: true,
-                description: "Number of days the position has been held"
-              }
-            }
-          },
-          output: {
-            type: "object",
-            properties: {
-              token0Symbol: { type: "string" },
-              token1Symbol: { type: "string" },
-              initialValue: { type: "number" },
-              currentValue: { type: "number" },
-              hodlValue: { type: "number" },
-              impermanentLoss: { type: "number" },
-              impermanentLossPercent: { type: "number" },
-              estimatedFeeAPR: { type: "number" },
-              estimatedFeesEarned: { type: "number" },
-              netProfitLoss: { type: "number" },
-              netProfitLossPercent: { type: "number" },
-              recommendation: { type: "string" },
-              priceChange: {
-                type: "object",
-                properties: {
-                  token0: { type: "number" },
-                  token1: { type: "number" },
-                  ratio: { type: "number" }
-                }
-              }
-            }
-          }
-        },
-        extra: {
-          supportedTokens: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"],
-          dataSource: "CoinGecko API",
-          calculationMethod: "Constant Product AMM Formula (x × y = k)"
-        }
-      }]
-    }, 402);
-  }
-  
-  // Process calculation with payment
-  try {
-    console.log('[HANDLER] calculate-il called with payment');
-    const body = await c.req.json();
+// Main calculation entrypoint
+app.addEntrypoint({
+  key: 'calculate-il',
+  name: 'Calculate Impermanent Loss',
+  description: 'Calculates impermanent loss and fee APR for a liquidity provider position using historical price data from CoinGecko',
+  price: '$0.10',
+  handler: async (ctx) => {
+    console.log('[HANDLER] calculate-il called');
+    
+    const input = ctx.input as {
+      token0Symbol: string;
+      token1Symbol: string;
+      token0Amount: number;
+      token1Amount: number;
+      daysHeld: number;
+    };
     
     const position: PoolPosition = {
-      token0Symbol: body.token0Symbol,
-      token1Symbol: body.token1Symbol,
-      token0Amount: body.token0Amount,
-      token1Amount: body.token1Amount,
-      daysHeld: body.daysHeld,
+      ...input,
       entryPriceRatio: 1,
     };
 
     const prices = await fetchTokenPrices(
-      body.token0Symbol,
-      body.token1Symbol,
-      body.daysHeld
+      input.token0Symbol,
+      input.token1Symbol,
+      input.daysHeld
     );
 
     const result = calculateImpermanentLoss(position, prices);
     console.log('[HANDLER] Calculation complete');
     
-    return c.json(result);
-  } catch (error: any) {
-    console.error('[ERROR] Calculation failed:', error);
-    return c.json({ error: error.message }, 500);
-  }
+    return result;
+  },
 });
 
-// Root endpoint
-app.get('/', (c) => {
-  return c.json({
-    name: 'LP Impermanent Loss Estimator',
-    version: '1.0.0',
-    description: 'Calculate impermanent loss and fee APR for liquidity provider positions',
-    endpoints: {
-      health: '/health',
-      calculate: '/calculate-il (POST with x402 payment)'
-    },
-    x402: {
-      enabled: true,
-      price: '$0.10 USDC',
-      network: 'base',
-      wallet: '0xe7A413d4192fdee1bB5ecdF9D07A1827Eb15Bc1F'
-    }
-  });
-});
-
-console.log('[STARTUP] Routes defined ✓');
+console.log('[STARTUP] Entrypoints defined ✓');
 
 // ============================================
-// STEP 5: Start Server
+// STEP 5: Start Server with Bun
 // ============================================
-console.log('[STARTUP] Step 5: Starting server...');
+console.log('[STARTUP] Step 5: Starting server with Bun...');
 
-const server = serve({
-  fetch: app.fetch,
+const server = Bun.serve({
   port: PORT,
   hostname: HOST,
-}, (info) => {
-  console.log(`[SUCCESS] ✓ Server running at http://${info.address}:${info.port}`);
-  console.log(`[SUCCESS] ✓ Health: http://${info.address}:${info.port}/health`);
-  console.log(`[SUCCESS] ✓ Calculate: http://${info.address}:${info.port}/calculate-il`);
-  console.log('[SUCCESS] ===== READY TO ACCEPT REQUESTS =====');
+  fetch: honoApp.fetch,
 });
 
-// Keep-alive
-const keepAlive = setInterval(() => {
+console.log(`[SUCCESS] ✓ Server running at http://${HOST}:${PORT}`);
+console.log(`[SUCCESS] ✓ Health check: http://${HOST}:${PORT}/health`);
+console.log(`[SUCCESS] ✓ Entrypoints: http://${HOST}:${PORT}/entrypoints`);
+console.log('[SUCCESS] ===== READY TO ACCEPT REQUESTS =====');
+
+// Keep-alive logging
+setInterval(() => {
   console.log('[KEEPALIVE] Server is running...');
 }, 30000);
 
 // Graceful shutdown
 const shutdown = () => {
   console.log('[SHUTDOWN] Received shutdown signal');
-  clearInterval(keepAlive);
-  server.close(() => {
-    console.log('[SHUTDOWN] Server stopped gracefully');
-    process.exit(0);
-  });
+  server.stop();
+  console.log('[SHUTDOWN] Server stopped gracefully');
+  process.exit(0);
 };
 
 process.on('SIGTERM', shutdown);
