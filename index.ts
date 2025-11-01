@@ -234,7 +234,7 @@ honoApp.post('/calculate-il-x402', async (c) => {
         scheme: "exact",
         network: "base",
         maxAmountRequired: "100000",
-        resource: "/calculate-il-x402",
+        resource: "https://lp-impermanent-loss-estimator-production.up.railway.app/calculate-il-x402",
         description: "Calculate impermanent loss and fee APR for liquidity provider positions using historical price data from CoinGecko",
         mimeType: "application/json",
         payTo: WALLET_ADDRESS,
