@@ -1,5 +1,6 @@
 import { createAgentApp } from '@lucid-dreams/agent-kit';
 import { z } from 'zod';
+import { serve } from '@hono/node-server';
 
 // ============================================
 // STEP 1: Environment & Configuration
@@ -367,8 +368,6 @@ console.log('[STARTUP] Entrypoints defined via custom middleware ✓');
 // STEP 5: Start Server (Node.js compatible)
 // ============================================
 console.log('[STARTUP] Step 5: Starting server with Node.js...');
-
-import { serve } from '@hono/node-server';
 
 const server = serve({
   fetch: honoApp.fetch,
