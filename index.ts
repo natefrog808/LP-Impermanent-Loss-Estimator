@@ -221,6 +221,100 @@ honoApp.get('/health', (c) => {
   });
 });
 
+// Manual 402 handler for x402scan compatibility - MUST come before agent-kit entrypoint
+honoApp.post('/entrypoints/calculate-il', async (c) => {
+  const paymentHeader = c.req.header('X-PAYMENT');
+  
+  if (!paymentHeader) {
+    // Return 402 with x402scan-compliant schema
+    console.log('[402] Returning payment required response for x402scan');
+    return c.json({
+      x402Version: 1,
+      accepts: [{
+        scheme: "exact",
+        network: "base",
+        maxAmountRequired: "100000",
+        resource: "/entrypoints/calculate-il",
+        description: "Calculate impermanent loss and fee APR for liquidity provider positions using historical price data from CoinGecko",
+        mimeType: "application/json",
+        payTo: WALLET_ADDRESS,
+        maxTimeoutSeconds: 300,
+        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        outputSchema: {
+          input: {
+            type: "http",
+            method: "POST",
+            bodyType: "json",
+            bodyFields: {
+              token0Symbol: {
+                type: "string",
+                required: true,
+                description: "First token symbol (e.g., ETH, BTC, USDC)",
+                enum: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"]
+              },
+              token1Symbol: {
+                type: "string",
+                required: true,
+                description: "Second token symbol (e.g., USDC, USDT, DAI)",
+                enum: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"]
+              },
+              token0Amount: {
+                type: "number",
+                required: true,
+                description: "Amount of first token in the pool"
+              },
+              token1Amount: {
+                type: "number",
+                required: true,
+                description: "Amount of second token in the pool"
+              },
+              daysHeld: {
+                type: "number",
+                required: true,
+                description: "Number of days the position has been held"
+              }
+            }
+          },
+          output: {
+            type: "object",
+            properties: {
+              token0Symbol: { type: "string" },
+              token1Symbol: { type: "string" },
+              initialValue: { type: "number" },
+              currentValue: { type: "number" },
+              hodlValue: { type: "number" },
+              impermanentLoss: { type: "number" },
+              impermanentLossPercent: { type: "number" },
+              estimatedFeeAPR: { type: "number" },
+              estimatedFeesEarned: { type: "number" },
+              netProfitLoss: { type: "number" },
+              netProfitLossPercent: { type: "number" },
+              recommendation: { type: "string" },
+              priceChange: {
+                type: "object",
+                properties: {
+                  token0: { type: "number" },
+                  token1: { type: "number" },
+                  ratio: { type: "number" }
+                }
+              }
+            }
+          }
+        },
+        extra: {
+          supportedTokens: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"],
+          dataSource: "CoinGecko API",
+          calculationMethod: "Constant Product AMM Formula (x × y = k)"
+        }
+      }]
+    }, 402);
+  }
+  
+  // If payment exists, let agent-kit handle it
+  // Just return next() or continue
+  console.log('[PAYMENT] Payment header detected, processing...');
+});
+
 // Main calculation entrypoint
 app.addEntrypoint({
   key: 'calculate-il',
