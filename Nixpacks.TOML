@@ -1,8 +1,5 @@
 [phases.setup]
-nixPkgs = ['nodejs-20_x']
-
-[phases.install]
-cmds = ['npm ci --include=dev']
+providers = ['bun']
 
 [start]
-cmd = 'node --import tsx index.ts'
+cmd = 'bun run index.ts'
