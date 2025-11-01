@@ -220,6 +220,132 @@ console.log('[CONFIG] Payments enabled:', app.payments ? 'Yes ✓' : 'No ✗');
 const honoApp = app.app;
 
 // ============================================
+// x402scan Compatible Middleware
+// ============================================
+console.log('[STARTUP] Adding x402scan-compatible middleware...');
+
+// Add x402-compliant response for the calculate-il endpoint
+honoApp.post('/entrypoints/calculate-il', async (c) => {
+  // Check if there's a payment header
+  const paymentHeader = c.req.header('X-PAYMENT');
+  
+  if (!paymentHeader) {
+    // Return 402 with x402scan-compliant schema
+    return c.json({
+      x402Version: 1,
+      accepts: [{
+        scheme: "exact",
+        network: "base",
+        maxAmountRequired: "100000", // $0.10 in USDC (6 decimals)
+        resource: "/entrypoints/calculate-il",
+        description: "Calculate impermanent loss and fee APR for liquidity provider positions using historical price data",
+        mimeType: "application/json",
+        payTo: "0xe7A413d4192fdee1bB5ecdF9D07A1827Eb15Bc1F",
+        maxTimeoutSeconds: 300,
+        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", // USDC on Base
+        outputSchema: {
+          input: {
+            type: "http",
+            method: "POST",
+            bodyType: "json",
+            bodyFields: {
+              token0Symbol: {
+                type: "string",
+                required: true,
+                description: "First token symbol (e.g., ETH, BTC, USDC)",
+                enum: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"]
+              },
+              token1Symbol: {
+                type: "string",
+                required: true,
+                description: "Second token symbol (e.g., USDC, USDT, DAI)",
+                enum: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"]
+              },
+              token0Amount: {
+                type: "number",
+                required: true,
+                description: "Amount of first token in the pool (e.g., 1.5)"
+              },
+              token1Amount: {
+                type: "number",
+                required: true,
+                description: "Amount of second token in the pool (e.g., 3000)"
+              },
+              daysHeld: {
+                type: "number",
+                required: true,
+                description: "Number of days the position has been held (e.g., 30)"
+              }
+            }
+          },
+          output: {
+            type: "object",
+            properties: {
+              token0Symbol: { type: "string" },
+              token1Symbol: { type: "string" },
+              initialValue: { type: "number", description: "Initial position value in USD" },
+              currentValue: { type: "number", description: "Current pool value in USD" },
+              hodlValue: { type: "number", description: "Value if held outside pool in USD" },
+              impermanentLoss: { type: "number", description: "Impermanent loss in USD" },
+              impermanentLossPercent: { type: "number", description: "Impermanent loss as percentage" },
+              estimatedFeeAPR: { type: "number", description: "Estimated fee APR percentage" },
+              estimatedFeesEarned: { type: "number", description: "Estimated fees earned in USD" },
+              netProfitLoss: { type: "number", description: "Net profit/loss (IL + fees) in USD" },
+              netProfitLossPercent: { type: "number", description: "Net profit/loss percentage" },
+              recommendation: { type: "string", description: "Actionable recommendation" },
+              priceChange: {
+                type: "object",
+                properties: {
+                  token0: { type: "number", description: "Token0 price change %" },
+                  token1: { type: "number", description: "Token1 price change %" },
+                  ratio: { type: "number", description: "Price ratio change %" }
+                }
+              }
+            }
+          }
+        },
+        extra: {
+          supportedTokens: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"],
+          dataSource: "CoinGecko API",
+          calculationMethod: "Constant Product AMM Formula (x × y = k)"
+        }
+      }]
+    }, 402);
+  }
+  
+  // If payment header exists, process the calculation
+  try {
+    console.log('[HANDLER] calculate-il called with payment');
+    const body = await c.req.json();
+    
+    const position: PoolPosition = {
+      token0Symbol: body.token0Symbol,
+      token1Symbol: body.token1Symbol,
+      token0Amount: body.token0Amount,
+      token1Amount: body.token1Amount,
+      daysHeld: body.daysHeld,
+      entryPriceRatio: 1,
+    };
+
+    const prices = await fetchTokenPrices(
+      body.token0Symbol,
+      body.token1Symbol,
+      body.daysHeld
+    );
+
+    const result = calculateImpermanentLoss(position, prices);
+    console.log('[HANDLER] Calculation complete:', result);
+    
+    return c.json(result);
+  } catch (error: any) {
+    console.error('[ERROR] Calculation failed:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+console.log('[STARTUP] x402scan middleware added ✓');
+
+// ============================================
 // STEP 4: Define Entrypoints
 // ============================================
 console.log('[STARTUP] Step 4: Defining entrypoints...');
@@ -235,43 +361,7 @@ honoApp.get('/health', (c) => {
   });
 });
 
-// Main IL calculation entrypoint
-app.addEntrypoint({
-  key: 'calculate-il',
-  name: 'Calculate Impermanent Loss',
-  description: 'Calculates impermanent loss and fee APR for a liquidity provider position using historical price data from CoinGecko',
-  price: '$0.10',
-  handler: async (ctx) => {
-    console.log('[HANDLER] calculate-il called');
-    
-    // Parse input from context
-    const input = ctx.input as {
-      token0Symbol: string;
-      token1Symbol: string;
-      token0Amount: number;
-      token1Amount: number;
-      daysHeld: number;
-    };
-    
-    const position: PoolPosition = {
-      ...input,
-      entryPriceRatio: 1, // We'll derive this from historical prices
-    };
-
-    const prices = await fetchTokenPrices(
-      input.token0Symbol,
-      input.token1Symbol,
-      input.daysHeld
-    );
-
-    const result = calculateImpermanentLoss(position, prices);
-    console.log('[HANDLER] Calculation complete:', result);
-    
-    return result;
-  },
-});
-
-console.log('[STARTUP] Entrypoints defined ✓');
+console.log('[STARTUP] Entrypoints defined via custom middleware ✓');
 
 // ============================================
 // STEP 5: Start Server (Node.js compatible)
