@@ -4,13 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "bun run index.ts",
-    "start": "bun run index.ts"
+    "start": "node --import tsx index.ts"
   },
   "dependencies": {
     "@lucid-dreams/agent-kit": "^0.2.22",
-    "hono": "^4.0.0"
-  },
-  "engines": {
-    "bun": ">=1.0.0"
+    "@hono/node-server": "^1.12.0",
+    "hono": "^4.0.0",
+    "tsx": "^4.7.0"
   }
 }
