@@ -205,15 +205,16 @@ const app = createAgentApp({
   name: 'LP Impermanent Loss Estimator',
   description: 'Calculate impermanent loss and fee APR for liquidity provider positions using real historical price data',
   version: '1.0.0',
-  paymentsConfig: FACILITATOR_URL && WALLET_ADDRESS ? {
-    facilitatorUrl: FACILITATOR_URL,
-    address: WALLET_ADDRESS as `0x${string}`,
-    network: NETWORK,
-    defaultPrice: DEFAULT_PRICE,
-  } : undefined,
+  paymentsConfig: {
+    facilitatorUrl: FACILITATOR_URL || 'https://facilitator.cdp.coinbase.com',
+    address: (WALLET_ADDRESS || '0xe7A413d4192fdee1bB5ecdf9D07A1827Eb15Bc1F') as `0x${string}`,
+    network: NETWORK || 'base',
+    defaultPrice: DEFAULT_PRICE || '$0.10',
+  },
 });
 
 console.log('[STARTUP] Agent app created ✓');
+console.log('[CONFIG] Payments enabled:', app.payments ? 'Yes ✓' : 'No ✗');
 
 // Access the underlying Hono app for custom routes
 const honoApp = app.app;
