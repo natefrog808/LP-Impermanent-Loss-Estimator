@@ -259,17 +259,48 @@ app.addEntrypoint({
 console.log('[STARTUP] Entrypoints defined ✓');
 
 // ============================================
-// STEP 5: Start Server with Bun
+// STEP 5: Start Server (Auto-detect runtime)
 // ============================================
-console.log('[STARTUP] Step 5: Starting server with Bun...');
+console.log('[STARTUP] Step 5: Starting server...');
 
-const server = Bun.serve({
-  port: PORT,
-  hostname: HOST,
-  fetch: honoApp.fetch,
-});
+// Check if running in Bun
+const isBun = typeof Bun !== 'undefined';
+console.log(`[CONFIG] Detected runtime: ${isBun ? 'Bun' : 'Node.js'}`);
 
-console.log(`[SUCCESS] ✓ Server running at http://${HOST}:${PORT}`);
+if (isBun) {
+  // Use Bun's native server
+  const server = Bun.serve({
+    port: PORT,
+    hostname: HOST,
+    fetch: honoApp.fetch,
+  });
+
+  console.log(`[SUCCESS] ✓ Server running at http://${HOST}:${PORT} (Bun)`);
+} else {
+  // Use Node.js with @hono/node-server
+  const { serve } = await import('@hono/node-server');
+  
+  const server = serve({
+    fetch: honoApp.fetch,
+    port: PORT,
+    hostname: HOST,
+  }, (info) => {
+    console.log(`[SUCCESS] ✓ Server running at http://${info.address}:${info.port} (Node.js)`);
+  });
+  
+  // Graceful shutdown for Node
+  const shutdown = () => {
+    console.log('[SHUTDOWN] Received shutdown signal');
+    server.close(() => {
+      console.log('[SHUTDOWN] Server stopped gracefully');
+      process.exit(0);
+    });
+  };
+  
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
+
 console.log(`[SUCCESS] ✓ Health check: http://${HOST}:${PORT}/health`);
 console.log(`[SUCCESS] ✓ Entrypoints: http://${HOST}:${PORT}/entrypoints`);
 console.log('[SUCCESS] ===== READY TO ACCEPT REQUESTS =====');
@@ -278,14 +309,3 @@ console.log('[SUCCESS] ===== READY TO ACCEPT REQUESTS =====');
 setInterval(() => {
   console.log('[KEEPALIVE] Server is running...');
 }, 30000);
-
-// Graceful shutdown
-const shutdown = () => {
-  console.log('[SHUTDOWN] Received shutdown signal');
-  server.stop();
-  console.log('[SHUTDOWN] Server stopped gracefully');
-  process.exit(0);
-};
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
