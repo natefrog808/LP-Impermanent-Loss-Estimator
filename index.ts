@@ -221,20 +221,20 @@ honoApp.get('/health', (c) => {
   });
 });
 
-// Manual 402 handler for x402scan compatibility
-honoApp.post('/entrypoints/calculate-il', async (c) => {
+// SEPARATE x402 endpoint for x402scan registration (bypasses agent-kit)
+honoApp.post('/calculate-il-x402', async (c) => {
   const paymentHeader = c.req.header('X-PAYMENT');
   
   if (!paymentHeader) {
     // Return 402 with x402scan-compliant schema
-    console.log('[402] Returning payment required response for x402scan');
+    console.log('[402] x402scan endpoint - returning 402');
     return c.json({
       x402Version: 1,
       accepts: [{
         scheme: "exact",
         network: "base",
         maxAmountRequired: "100000",
-        resource: "/entrypoints/calculate-il",
+        resource: "/calculate-il-x402",
         description: "Calculate impermanent loss and fee APR for liquidity provider positions using historical price data from CoinGecko",
         mimeType: "application/json",
         payTo: WALLET_ADDRESS,
@@ -249,72 +249,49 @@ honoApp.post('/entrypoints/calculate-il', async (c) => {
               token0Symbol: {
                 type: "string",
                 required: true,
-                description: "First token symbol (e.g., ETH, BTC, USDC)",
+                description: "First token symbol",
                 enum: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"]
               },
               token1Symbol: {
                 type: "string",
                 required: true,
-                description: "Second token symbol (e.g., USDC, USDT, DAI)",
+                description: "Second token symbol",
                 enum: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"]
               },
               token0Amount: {
                 type: "number",
                 required: true,
-                description: "Amount of first token in the pool"
+                description: "Amount of first token"
               },
               token1Amount: {
                 type: "number",
                 required: true,
-                description: "Amount of second token in the pool"
+                description: "Amount of second token"
               },
               daysHeld: {
                 type: "number",
                 required: true,
-                description: "Number of days the position has been held"
+                description: "Days held"
               }
             }
           },
           output: {
             type: "object",
             properties: {
-              token0Symbol: { type: "string" },
-              token1Symbol: { type: "string" },
-              initialValue: { type: "number" },
-              currentValue: { type: "number" },
-              hodlValue: { type: "number" },
               impermanentLoss: { type: "number" },
               impermanentLossPercent: { type: "number" },
-              estimatedFeeAPR: { type: "number" },
-              estimatedFeesEarned: { type: "number" },
               netProfitLoss: { type: "number" },
-              netProfitLossPercent: { type: "number" },
-              recommendation: { type: "string" },
-              priceChange: {
-                type: "object",
-                properties: {
-                  token0: { type: "number" },
-                  token1: { type: "number" },
-                  ratio: { type: "number" }
-                }
-              }
+              recommendation: { type: "string" }
             }
           }
-        },
-        extra: {
-          supportedTokens: ["ETH", "WETH", "BTC", "WBTC", "USDC", "USDT", "DAI"],
-          dataSource: "CoinGecko API",
-          calculationMethod: "Constant Product AMM Formula (x × y = k)"
         }
       }]
     }, 402);
   }
   
-  // Process calculation with payment
+  // With payment
   try {
-    console.log('[HANDLER] calculate-il called with payment');
     const body = await c.req.json();
-    
     const position: PoolPosition = {
       token0Symbol: body.token0Symbol,
       token1Symbol: body.token1Symbol,
@@ -323,31 +300,22 @@ honoApp.post('/entrypoints/calculate-il', async (c) => {
       daysHeld: body.daysHeld,
       entryPriceRatio: 1,
     };
-
-    const prices = await fetchTokenPrices(
-      body.token0Symbol,
-      body.token1Symbol,
-      body.daysHeld
-    );
-
+    const prices = await fetchTokenPrices(body.token0Symbol, body.token1Symbol, body.daysHeld);
     const result = calculateImpermanentLoss(position, prices);
-    console.log('[HANDLER] Calculation complete');
-    
     return c.json(result);
   } catch (error: any) {
-    console.error('[ERROR] Calculation failed:', error);
     return c.json({ error: error.message }, 500);
   }
 });
 
-// Also add agent-kit entrypoint for discovery
+// Agent-kit entrypoint for discovery
 app.addEntrypoint({
   key: 'calculate-il',
   name: 'Calculate Impermanent Loss',
   description: 'Calculates impermanent loss and fee APR for liquidity provider position using historical price data from CoinGecko',
   price: '$0.10',
   handler: async (ctx) => {
-    console.log('[AGENT-KIT] calculate-il called via agent-kit');
+    console.log('[AGENT-KIT] calculate-il called');
     
     const input = ctx.input as {
       token0Symbol: string;
